@@ -48,10 +48,10 @@ jobs:
         run: dotnet --list-sdks
 
       - name: Restore for VSIX
-        run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
+        run: dotnet restore src\VSIX\VSIX.csproj
 
       - name: Create VSIX
-        run: msbuild src\VSIX\VSIX.csproj -p:Configuration=Release
+        run: dotnet build src\VSIX\VSIX.csproj -c Release
 
       - name: Create MSI
-        run: msbuild src\MSI\MSI.wixproj -p:Configuration=Release -v:Minimal
+        run: dotnet build src\MSI\MSI.wixproj -c Release
