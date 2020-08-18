@@ -141,7 +141,7 @@ jobs:
 
     runs-on: windows-latest
 
-    if: github.event_name == 'push' && github.repository == 'npgsql/npgsql'
+    if: github.event_name == 'push'
 
     steps:
       - name: Checkout
@@ -181,31 +181,3 @@ jobs:
 
       - name: Create MSI
         run: msbuild src\MSI\MSI.wixproj -p:Configuration=Release -v:Minimal
-
-      - name: Upload artifacts (nupkg)
-        uses: actions/upload-artifact@v1
-        with:
-          name: Npgsql.nupkgs
-          path: nupkgs
-
-      - name: Upload artifacts (vsix)
-        uses: actions/upload-artifact@v1
-        with:
-          name: Npgsql.vsix
-          path: src/VSIX/bin/Release/Npgsql.vsix
-
-      - name: Upload artifacts (msi)
-        uses: actions/upload-artifact@v1
-        with:
-          name: Npgsql.msi
-          path: src/MSI/bin/Release/en-us/Npgsql.msi
-
-      - name: Publish packages to MyGet (vnext)
-        if: startsWith(github.ref, 'refs/heads/') && startsWith(github.ref, 'refs/heads/hotfix/') == false
-        run: dotnet nuget push nupkgs/*.nupkg --api-key ${{ secrets.MYGET_FEED_TOKEN }} --source https://www.myget.org/F/npgsql-unstable/api/v3/index.json
-        shell: bash
-
-      - name: Publish packages to MyGet (patch)
-        if: startsWith(github.ref, 'refs/heads/hotfix/')
-        run: dotnet nuget push **/*.nupkg --api-key ${{ secrets.MYGET_FEED_TOKEN }} --source https://www.myget.org/F/npgsql/api/v3/index.json
-        shell: bash
