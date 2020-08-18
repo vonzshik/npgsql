@@ -3,7 +3,7 @@ name: Build
 on: [push, pull_request]
 
 env:
-  dotnet_sdk_version: '5.0.100-preview.5.20279.10'
+  dotnet_sdk_version: '5.0.100-preview.7.20366.6'
   postgis_version: 3
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
 
@@ -17,6 +17,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v1
+        
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ env.dotnet_sdk_version }}
 
       - name: Setup MSBuild
         uses: warrenbuckley/Setup-MSBuild@v1
@@ -28,11 +33,6 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Build.targets') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
-
-      - name: Setup .NET Core SDK
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: ${{ env.dotnet_sdk_version }}
 
       - name: Pack NuGet packages (CI versions)
         if: startsWith(github.ref, 'refs/heads/')
