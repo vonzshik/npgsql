@@ -49,6 +49,9 @@ jobs:
         
       - name: Testing2
         run: $env:MSBuildSdksPath = "C:\Program Files\dotnet\sdk\"
+        
+      - name: Testing3
+        run: dotnet --info
           
       - name: List SDKs
         run: dotnet --list-sdks
