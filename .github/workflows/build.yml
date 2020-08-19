@@ -48,7 +48,7 @@ jobs:
         run: cp -R "$env:DOTNET_ROOT\sdk\*" "C:\Program Files\dotnet\sdk\"
         
       - name: Testing2
-        run: $env:MSBuildSdksPath = "C:\Program Files\dotnet\sdk\"
+        run: $env:MSBuildSdksPath = "C:\Program Files\dotnet\sdk\5.0.100-preview.7.20366.6\Sdks"
         
       - name: Testing3
         run: dotnet --info
@@ -60,7 +60,7 @@ jobs:
         run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
 
       - name: Create VSIX
-        run: dotnet msbuild src\VSIX\VSIX.csproj -p:Configuration=Release -v:Diag
+        run: msbuild src\VSIX\VSIX.csproj -p:Configuration=Release -v:Minimal
 
       - name: Create MSI
         run: msbuild src\MSI\MSI.wixproj -p:Configuration=Release -v:Minimal
