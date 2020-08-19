@@ -49,8 +49,7 @@ jobs:
         
       - name: Testing
         run: |
-          set testvar=DOTNET_ROOT
-          call echo %%testvar%%
+          $env:DOTNET_ROOT
 
       - name: Restore for VSIX
         run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
