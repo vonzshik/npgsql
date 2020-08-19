@@ -45,7 +45,7 @@ jobs:
         shell: bash
         
       - name: Testing
-        run: cp "$env:DOTNET_ROOT\sdk\*" "C:\Program Files\dotnet\sdk\"
+        run: cp -R "$env:DOTNET_ROOT\sdk\*" "C:\Program Files\dotnet\sdk\"
         
       - name: Testing2
         run: ls "C:\Program Files\dotnet\sdk"
