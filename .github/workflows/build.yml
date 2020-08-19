@@ -46,12 +46,17 @@ jobs:
         
       - name: List SDKs
         run: dotnet --list-sdks
+        
+      - name: Testing
+        run: |
+          set testvar=DOTNET_ROOT
+          call echo %%testvar%%
 
       - name: Restore for VSIX
-        run: dotnet restore src\VSIX\VSIX.csproj
+        run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
 
       - name: Create VSIX
-        run: dotnet build src\VSIX\VSIX.csproj -c Release
+        run: msbuild src\VSIX\VSIX.csproj -p:Configuration=Release -v:Detailed
 
       - name: Create MSI
-        run: dotnet build src\MSI\MSI.wixproj -c Release
+        run: msbuild src\MSI\MSI.wixproj -p:Configuration=Release -v:Minimal
