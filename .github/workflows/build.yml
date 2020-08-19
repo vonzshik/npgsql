@@ -49,7 +49,7 @@ jobs:
         
       - name: Testing
         run: |
-          $env:DOTNET_ROOT
+          cp "$env:DOTNET_ROOT\sdk\*" "C:\Program Files\dotnet\sdk"
 
       - name: Restore for VSIX
         run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
