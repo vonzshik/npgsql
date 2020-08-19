@@ -48,7 +48,7 @@ jobs:
         run: cp -R "$env:DOTNET_ROOT\sdk\*" "C:\Program Files\dotnet\sdk\"
         
       - name: Testing2
-        run: $env:MSBuildSdksPath
+        run: $env:MSBuildSdksPath = "C:\Program Files\dotnet\sdk\"
           
       - name: List SDKs
         run: dotnet --list-sdks
