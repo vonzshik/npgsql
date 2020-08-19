@@ -44,13 +44,13 @@ jobs:
         run: dotnet pack Npgsql.sln --configuration Release --output nupkgs -p:ContinuousIntegrationBuild=true
         shell: bash
         
-      - name: List SDKs
-        run: dotnet --list-sdks
-        
       - name: Testing
         run: |
           cp "$env:DOTNET_ROOT\sdk\*" "C:\Program Files\dotnet\sdk\"
           ls "C:\Program Files\dotnet\sdk"
+          
+      - name: List SDKs
+        run: dotnet --list-sdks
 
       - name: Restore for VSIX
         run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
