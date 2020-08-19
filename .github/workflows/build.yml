@@ -52,6 +52,8 @@ jobs:
         
       - name: Testing3
         run: ls "C:\Program Files\dotnet\sdk\5.0.100-preview.7.20366.6"
+        
+      - name: $env:PATH
           
       - name: List SDKs
         run: dotnet --list-sdks
