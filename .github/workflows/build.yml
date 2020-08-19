@@ -60,7 +60,7 @@ jobs:
         run: msbuild src\VSIX\VSIX.csproj -t:Restore -v:Minimal
 
       - name: Create VSIX
-        run: msbuild src\VSIX\VSIX.csproj -p:Configuration=Release -v:Debug
+        run: msbuild src\VSIX\VSIX.csproj -p:Configuration=Release -v:Diag
 
       - name: Create MSI
         run: msbuild src\MSI\MSI.wixproj -p:Configuration=Release -v:Minimal
