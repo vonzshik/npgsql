@@ -45,7 +45,15 @@ namespace Npgsql
         /// <summary>
         /// Current timeout in ms
         /// </summary>
-        public int Timeout { get => (int)_buf.Timeout.TotalMilliseconds; set => _buf.Timeout = TimeSpan.FromMilliseconds(value); }
+        public int Timeout
+        {
+            set
+            {
+                _buf.Timeout = TimeSpan.FromMilliseconds(value);
+                // When calling Complete(), we're using the connector, which overwrites the buffer's timeout with it's own
+                _connector.UserTimeout = value;
+            }
+        }
 
         #endregion
 
