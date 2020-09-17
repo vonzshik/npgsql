@@ -37,6 +37,10 @@ namespace Npgsql
         public override bool CanWrite => _canWrite;
         public override bool CanRead => _canRead;
 
+        public override bool CanTimeout => true;
+        public override int WriteTimeout { get => (int)_writeBuf.Timeout.TotalMilliseconds; set => _writeBuf.Timeout = TimeSpan.FromMilliseconds(value); }
+        public override int ReadTimeout { get => (int)_readBuf.Timeout.TotalMilliseconds; set => _readBuf.Timeout = TimeSpan.FromMilliseconds(value); }
+
         /// <summary>
         /// The copy binary format header signature
         /// </summary>

@@ -42,6 +42,11 @@ namespace Npgsql
 
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlBinaryImporter));
 
+        /// <summary>
+        /// Current timeout in ms
+        /// </summary>
+        public int Timeout { get => (int)_buf.Timeout.TotalMilliseconds; set => _buf.Timeout = TimeSpan.FromMilliseconds(value); }
+
         #endregion
 
         #region Construction / Initialization
