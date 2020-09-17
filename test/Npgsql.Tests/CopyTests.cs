@@ -38,7 +38,7 @@ namespace Npgsql.Tests
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                var writer = conn.BeginBinaryImport($"COPY {table2} FROM STDIN BINARY");
+                using (var writer = conn.BeginBinaryImport($"COPY {table2} FROM STDIN BINARY"))
                 {
                     writer.Timeout = 3;
                     for (var i = 1; i <= rowCount; ++i)
