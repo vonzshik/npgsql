@@ -49,7 +49,7 @@ namespace Npgsql
         {
             set
             {
-                //_buf.Timeout = TimeSpan.FromMilliseconds(value);
+                _buf.Timeout = TimeSpan.FromMilliseconds(value);
                 // When calling Complete(), we're using the connector, which overwrites the buffer's timeout with it's own
                 _connector.UserTimeout = value;
             }
