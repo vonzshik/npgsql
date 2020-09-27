@@ -147,6 +147,8 @@ namespace Npgsql
         /// </summary>
         volatile Exception? _breakReason;
 
+        volatile bool _cancellationRequested;
+
         /// <summary>
         /// <para>
         /// Used by the pool to indicate that I/O is currently in progress on this connector, so that another write
@@ -1167,7 +1169,7 @@ namespace Npgsql
                             if (_originalTimeoutException != null)
                                 throw Break(_originalTimeoutException);
 
-                            // We have got a timeout while not reading the async notifications - trying to cancel a query
+                            // We have got a timeout while not reading async notifications - trying to cancel a query
                             try
                             {
                                 CancelRequest(throwExceptions: true);
@@ -1422,15 +1424,22 @@ namespace Npgsql
 
         /// <summary>
         /// Creates another connector and sends a cancel request through it for this connector.
+        /// Returns, whether cancel request was send.
         /// </summary>
-        internal void CancelRequest(bool throwExceptions = false)
+        internal bool CancelRequest(bool throwExceptions = false)
         {
+            if (_cancellationRequested)
+                return false;
+
             if (BackendProcessId == 0)
                 throw new NpgsqlException("Cancellation not supported on this database (no BackendKeyData was received during connection)");
 
             Log.Debug("Sending cancellation...", Id);
             lock (CancelLock)
             {
+                if (_cancellationRequested)
+                    return false;
+
                 try
                 {
                     var cancelConnector = new NpgsqlConnector(this);
@@ -1446,6 +1455,12 @@ namespace Npgsql
                             throw;
                     }
                 }
+                finally
+                {
+                    _cancellationRequested = true;
+                }
+
+                return true;
             }
         }
 
@@ -1472,6 +1487,17 @@ namespace Npgsql
             {
                 lock (this)
                     Cleanup();
+            }
+        }
+
+        internal void ResetCancellation()
+        {
+            _cancellationRequested = false;
+
+            if (CommandCts.IsCancellationRequested)
+            {
+                CommandCts.Dispose();
+                CommandCts = new CancellationTokenSource();
             }
         }
 

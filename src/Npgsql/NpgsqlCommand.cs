@@ -1152,36 +1152,12 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
 
                     try
                     {
-                        var finalCt = CancellationToken.None;
+                        connector.ResetCancellation();
+
+                        var finalCt = connector.CommandCts.Token;
 
                         if (cancellationToken.CanBeCanceled)
-                        {
-                            if (connector.CommandCts.IsCancellationRequested)
-                            {
-                                connector.CommandCts.Dispose();
-                                connector.CommandCts = new CancellationTokenSource();
-                            }
-
-                            registration = cancellationToken.Register(o =>
-                            {
-                                var cmd = (NpgsqlCommand)o!;
-                                var cn = cmd.Connection?.Connector;
-                                if (cn is null)
-                                    return;
-
-                                try
-                                {
-                                    cmd.Cancel(true);
-                                    if (cn.Settings.CancellationTimeout > 0)
-                                        cn.CommandCts.CancelAfter(cn.Settings.CancellationTimeout * 1000);
-                                }
-                                catch
-                                {
-                                    cn.CommandCts.Cancel();
-                                }
-                            }, this);
-                            finalCt = connector.CommandCts.Token;
-                        }
+                            registration = cancellationToken.Register(cmd => ((NpgsqlCommand)cmd!).Cancel(), this);
 
                         ValidateParameters(connector.TypeMapper);
 
@@ -1276,19 +1252,20 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                             reader.NextResult();
                         return reader;
                     }
-                    catch
+                    catch (Exception e)
                     {
                         connector.CurrentReader = null;
                         conn.Connector?.EndUserAction();
+
+                        if (cancellationToken.IsCancellationRequested)
+                            throw new OperationCanceledException("", e, cancellationToken);
+
                         throw;
                     }
                     finally
                     {
-                        if (registration.HasValue)
-                        {
-                            registration.Value.Dispose();
-                            connector.CommandCts.CancelAfter(-1);
-                        }
+                        registration?.Dispose();
+                        connector.CommandCts.CancelAfter(-1);
                     }
                 }
                 else
@@ -1375,9 +1352,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         /// Attempts to cancel the execution of a <see cref="NpgsqlCommand">NpgsqlCommand</see>.
         /// </summary>
         /// <remarks>As per the specs, no exception will be thrown by this method in case of failure</remarks>
-        public override void Cancel() => Cancel(false);
-
-        void Cancel(bool throwExceptions)
+        public override void Cancel()
         {
             if (State != CommandState.InProgress)
                 return;
@@ -1388,7 +1363,15 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
             if (connector == null)
                 return;
 
-            connector.CancelRequest(throwExceptions);
+            try
+            {
+                if (connector.CancelRequest(true) && connector.Settings.CancellationTimeout > 0)
+                    connector.CommandCts.CancelAfter(connector.Settings.CancellationTimeout * 1000);
+            }
+            catch
+            {
+                connector.CommandCts.Cancel();
+            }
         }
 
         #endregion Cancel
