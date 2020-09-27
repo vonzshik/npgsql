@@ -1179,6 +1179,7 @@ namespace Npgsql
                             try
                             {
                                 CancelRequest(throwExceptions: true, requestedByUser: false);
+                                WriteCts.Cancel();
                                 _originalTimeoutException = e;
                                 ReadBuffer.Timeout = TimeSpan.FromSeconds(Settings.CancellationTimeout);
                             }
