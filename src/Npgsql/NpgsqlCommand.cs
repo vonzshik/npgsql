@@ -1266,7 +1266,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                         connector.CurrentReader = null;
                         conn.Connector?.EndUserAction();
 
-                        if (connector.CancellationRequested && !(e is OperationCanceledException))
+                        if (connector.UserCancellationRequested && !(e is OperationCanceledException))
                             throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                         throw;
@@ -1374,7 +1374,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
 
             try
             {
-                if (connector.CancelRequest(true))
+                if (connector.CancelRequest(throwExceptions: true))
                 {
                     if (connector.Settings.CancellationTimeout > 0)
                         connector.ReadCts.CancelAfter(connector.Settings.CancellationTimeout * 1000);

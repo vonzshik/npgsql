@@ -149,7 +149,9 @@ namespace Npgsql
 
         volatile bool _cancellationRequested;
 
-        internal bool CancellationRequested => _cancellationRequested;
+        volatile bool _userCancellationRequested;
+
+        internal bool UserCancellationRequested => _userCancellationRequested;
 
         /// <summary>
         /// <para>
@@ -1176,7 +1178,7 @@ namespace Npgsql
                             // We have got a timeout while not reading async notifications - trying to cancel a query
                             try
                             {
-                                CancelRequest(throwExceptions: true);
+                                CancelRequest(throwExceptions: true, requestedByUser: false);
                                 _originalTimeoutException = e;
                                 ReadBuffer.Timeout = TimeSpan.FromSeconds(Settings.CancellationTimeout);
                             }
@@ -1430,8 +1432,11 @@ namespace Npgsql
         /// Creates another connector and sends a cancel request through it for this connector.
         /// Returns, whether cancel request was send.
         /// </summary>
-        internal bool CancelRequest(bool throwExceptions = false)
+        internal bool CancelRequest(bool throwExceptions = false, bool requestedByUser = true)
         {
+            if (requestedByUser)
+                _userCancellationRequested = true;
+
             if (_cancellationRequested)
                 return false;
 
@@ -1497,6 +1502,7 @@ namespace Npgsql
         internal void ResetCancellation()
         {
             _cancellationRequested = false;
+            _userCancellationRequested = false;
 
             if (ReadCts.IsCancellationRequested)
             {

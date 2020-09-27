@@ -283,7 +283,7 @@ namespace Npgsql
             }
             catch (Exception e)
             {
-                if (Connector.CancellationRequested && !(e is OperationCanceledException))
+                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
                     throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                 throw;
@@ -540,7 +540,7 @@ namespace Npgsql
                     }
                 }
 
-                if (Connector.CancellationRequested && !(e is OperationCanceledException))
+                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
                     throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                 throw;
@@ -680,7 +680,7 @@ namespace Npgsql
                     postgresException.Statement = _statements[StatementIndex];
                 }
 
-                if (Connector.CancellationRequested && !(e is OperationCanceledException))
+                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
                     throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                 throw;
@@ -788,7 +788,7 @@ namespace Npgsql
         {
             try
             {
-                if (Connector.CancelRequest(true))
+                if (Connector.CancelRequest(throwExceptions: true))
                 {
                     if (Connector.Settings.CancellationTimeout > 0 && withTimeout)
                         Connector.ReadCts.CancelAfter(Connector.Settings.CancellationTimeout * 1000);
