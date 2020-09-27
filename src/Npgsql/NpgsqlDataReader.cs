@@ -39,7 +39,7 @@ namespace Npgsql
         internal NpgsqlConnector Connector { get; }
         NpgsqlConnection _connection = default!;
 
-        CancellationToken ConnectorCancellationToken => Connector.CommandCts.Token;
+        CancellationToken ConnectorCancellationToken => Connector.ReadCts.Token;
 
         /// <summary>
         /// The behavior of the command with which this reader was executed.
@@ -291,7 +291,7 @@ namespace Npgsql
             finally
             {
                 registration?.Dispose();
-                Connector.CommandCts.CancelAfter(-1);
+                Connector.ReadCts.CancelAfter(-1);
             }
         }
 
@@ -548,7 +548,7 @@ namespace Npgsql
             finally
             {
                 registration?.Dispose();
-                Connector.CommandCts.CancelAfter(-1);
+                Connector.ReadCts.CancelAfter(-1);
             }
         }
 
@@ -688,7 +688,7 @@ namespace Npgsql
             finally
             {
                 registration?.Dispose();
-                Connector.CommandCts.CancelAfter(-1);
+                Connector.ReadCts.CancelAfter(-1);
             }
         }
 
@@ -788,12 +788,17 @@ namespace Npgsql
         {
             try
             {
-                if (Connector.CancelRequest(true) && Connector.Settings.CancellationTimeout > 0 && withTimeout)
-                    Connector.CommandCts.CancelAfter(Connector.Settings.CancellationTimeout * 1000);
+                if (Connector.CancelRequest(true))
+                {
+                    if (Connector.Settings.CancellationTimeout > 0 && withTimeout)
+                        Connector.ReadCts.CancelAfter(Connector.Settings.CancellationTimeout * 1000);
+                    Connector.WriteCts.Cancel();
+                }
             }
             catch
             {
-                Connector.CommandCts.Cancel();
+                Connector.WriteCts.Cancel();
+                Connector.ReadCts.Cancel();
             }
         }
 

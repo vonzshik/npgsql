@@ -1154,7 +1154,8 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                     {
                         connector.ResetCancellation();
 
-                        var finalCt = connector.CommandCts.Token;
+                        var readCt = connector.ReadCts.Token;
+                        var writeCt = connector.WriteCts.Token;
 
                         if (cancellationToken.CanBeCanceled)
                             registration = cancellationToken.Register(cmd => ((NpgsqlCommand)cmd!).Cancel(), this);
@@ -1234,20 +1235,28 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                         // to prevents a dependency on the thread pool (which would also trigger deadlocks).
                         // The WriteBuffer notifies this command when the first buffer flush occurs, so that the
                         // send functions can switch to the special async mode when needed.
-                        var sendTask = NonMultiplexingWriteWrapper(connector, async, finalCt);
+                        var sendTask = NonMultiplexingWriteWrapper(connector, async, writeCt);
 
-                        // The following is a hack. It raises an exception if one was thrown in the first phases
-                        // of the send (i.e. in parts of the send that executed synchronously). Exceptions may
-                        // still happen later and aren't properly handled. See #1323.
-                        if (sendTask.IsFaulted)
-                            sendTask.GetAwaiter().GetResult();
+                        try
+                        {
+                            // The following is a hack. It raises an exception if one was thrown in the first phases
+                            // of the send (i.e. in parts of the send that executed synchronously). Exceptions may
+                            // still happen later and aren't properly handled. See #1323.
+                            if (sendTask.IsFaulted)
+                                sendTask.GetAwaiter().GetResult();
+                        }
+                        catch (OperationCanceledException e)
+                        {
+                            // User requested the cancellation - breaking the connection, as WriteBuffer doesn't do it
+                            throw connector.Break(e);
+                        }
 
                         // TODO: DRY the following with multiplexing, but be careful with the cancellation registration...
                         var reader = connector.DataReader;
                         reader.Init(this, behavior, _statements, sendTask);
                         connector.CurrentReader = reader;
                         if (async)
-                            await reader.NextResultAsync(finalCt);
+                            await reader.NextResultAsync(readCt);
                         else
                             reader.NextResult();
                         return reader;
@@ -1265,7 +1274,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                     finally
                     {
                         registration?.Dispose();
-                        connector.CommandCts.CancelAfter(-1);
+                        connector.ReadCts.CancelAfter(-1);
                     }
                 }
                 else
@@ -1365,12 +1374,17 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
 
             try
             {
-                if (connector.CancelRequest(true) && connector.Settings.CancellationTimeout > 0)
-                    connector.CommandCts.CancelAfter(connector.Settings.CancellationTimeout * 1000);
+                if (connector.CancelRequest(true))
+                {
+                    if (connector.Settings.CancellationTimeout > 0)
+                        connector.ReadCts.CancelAfter(connector.Settings.CancellationTimeout * 1000);
+                    connector.WriteCts.Cancel();
+                }
             }
             catch
             {
-                connector.CommandCts.Cancel();
+                connector.WriteCts.Cancel();
+                connector.ReadCts.Cancel();
             }
         }
 

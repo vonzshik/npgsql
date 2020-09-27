@@ -229,7 +229,9 @@ namespace Npgsql
 
         internal int ClearCounter { get; set; }
 
-        internal CancellationTokenSource CommandCts = new CancellationTokenSource();
+        internal CancellationTokenSource WriteCts = new CancellationTokenSource();
+
+        internal CancellationTokenSource ReadCts = new CancellationTokenSource();
 
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlConnector));
 
@@ -1494,10 +1496,16 @@ namespace Npgsql
         {
             _cancellationRequested = false;
 
-            if (CommandCts.IsCancellationRequested)
+            if (ReadCts.IsCancellationRequested)
             {
-                CommandCts.Dispose();
-                CommandCts = new CancellationTokenSource();
+                ReadCts.Dispose();
+                ReadCts = new CancellationTokenSource();
+            }
+
+            if (WriteCts.IsCancellationRequested)
+            {
+                WriteCts.Dispose();
+                WriteCts = new CancellationTokenSource();
             }
         }
 
