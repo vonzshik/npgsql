@@ -1258,7 +1258,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                         conn.Connector?.EndUserAction();
 
                         if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
-                            throw new OperationCanceledException("", e, cancellationToken);
+                            throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                         throw;
                     }

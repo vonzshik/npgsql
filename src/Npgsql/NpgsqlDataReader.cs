@@ -284,7 +284,7 @@ namespace Npgsql
             catch (Exception e)
             {
                 if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
-                    throw new OperationCanceledException("", e, cancellationToken);
+                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                 throw;
             }
@@ -541,7 +541,7 @@ namespace Npgsql
                 }
 
                 if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
-                    throw new OperationCanceledException("", e, cancellationToken);
+                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                 throw;
             }
@@ -681,7 +681,7 @@ namespace Npgsql
                 }
 
                 if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
-                    throw new OperationCanceledException("", e, cancellationToken);
+                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                 throw;
             }
