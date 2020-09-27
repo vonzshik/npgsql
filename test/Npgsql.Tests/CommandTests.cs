@@ -277,7 +277,7 @@ namespace Npgsql.Tests
                 var t = cmd.ExecuteNonQueryAsync(cancellationSource.Token);
                 Assert.That(async () => await t.ConfigureAwait(false), Throws.Exception.TypeOf<OperationCanceledException>()
                     .With.InnerException.TypeOf<PostgresException>()
-                    .With.Property(nameof(PostgresException.SqlState)).EqualTo("57014"));
+                    .With.InnerException.Property(nameof(PostgresException.SqlState)).EqualTo("57014"));
 
                 Assert.That(t.IsCanceled);
                 Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));

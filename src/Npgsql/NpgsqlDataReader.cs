@@ -179,12 +179,16 @@ namespace Npgsql
         {
             CheckClosed();
 
-            if (cancellationToken.IsCancellationRequested)
-                return Task.FromCanceled<bool>(cancellationToken);
-
             var fastRead = TryFastRead();
             if (fastRead.HasValue)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    Cancel();
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 return fastRead.Value ? PGUtil.TrueTask : PGUtil.FalseTask;
+            }
 
             using (NoSynchronizationContextScope.Enter())
                 return Read(true, cancellationToken);
@@ -241,6 +245,8 @@ namespace Npgsql
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 switch (State)
                 {
                 case ReaderState.BeforeResult:
@@ -280,7 +286,7 @@ namespace Npgsql
             }
             catch (Exception e)
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
                     throw new OperationCanceledException("", e, cancellationToken);
 
                 throw;
@@ -340,8 +346,6 @@ namespace Npgsql
         /// <returns>A task representing the asynchronous operation.</returns>
         public override Task<bool> NextResultAsync(CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested)
-                return Task.FromCanceled<bool>(cancellationToken);
             using (NoSynchronizationContextScope.Enter())
                 return _isSchemaOnly ? NextResultSchemaOnly(true, cancellationToken) : NextResult(true, cancellationToken: cancellationToken);
         }
@@ -364,6 +368,8 @@ namespace Npgsql
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // If we're in the middle of a resultset, consume it
                 switch (State)
                 {
@@ -534,7 +540,7 @@ namespace Npgsql
                     }
                 }
 
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
                     throw new OperationCanceledException("", e, cancellationToken);
 
                 throw;
@@ -607,6 +613,8 @@ namespace Npgsql
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 switch (State)
                 {
                 case ReaderState.BeforeResult:
@@ -674,7 +682,7 @@ namespace Npgsql
                     postgresException.Statement = _statements[StatementIndex];
                 }
 
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested && !(e is OperationCanceledException))
                     throw new OperationCanceledException("", e, cancellationToken);
 
                 throw;
