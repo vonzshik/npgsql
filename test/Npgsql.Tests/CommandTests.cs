@@ -257,8 +257,9 @@ namespace Npgsql.Tests
                         cmd.Cancel();
                     });
                     Assert.That(() => cmd.ExecuteNonQuery(), Throws
-                        .TypeOf<PostgresException>()
-                        .With.Property(nameof(PostgresException.SqlState)).EqualTo("57014")
+                        .TypeOf<OperationCanceledException>()
+                        .With.InnerException.TypeOf<PostgresException>()
+                        .With.InnerException.Property(nameof(PostgresException.SqlState)).EqualTo("57014")
                     );
                 }
             }
