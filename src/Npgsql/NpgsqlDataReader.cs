@@ -179,16 +179,15 @@ namespace Npgsql
         {
             CheckClosed();
 
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Cancel(false);
+                return Task.FromCanceled<bool>(cancellationToken);
+            }
+
             var fastRead = TryFastRead();
             if (fastRead.HasValue)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    Cancel();
-                    cancellationToken.ThrowIfCancellationRequested();
-                }
                 return fastRead.Value ? PGUtil.TrueTask : PGUtil.FalseTask;
-            }
 
             using (NoSynchronizationContextScope.Enter())
                 return Read(true, cancellationToken);
@@ -245,8 +244,6 @@ namespace Npgsql
 
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 switch (State)
                 {
                 case ReaderState.BeforeResult:
@@ -346,6 +343,11 @@ namespace Npgsql
         /// <returns>A task representing the asynchronous operation.</returns>
         public override Task<bool> NextResultAsync(CancellationToken cancellationToken)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Cancel(false);
+                return Task.FromCanceled<bool>(cancellationToken);
+            }
             using (NoSynchronizationContextScope.Enter())
                 return _isSchemaOnly ? NextResultSchemaOnly(true, cancellationToken) : NextResult(true, cancellationToken: cancellationToken);
         }
@@ -368,8 +370,6 @@ namespace Npgsql
 
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 // If we're in the middle of a resultset, consume it
                 switch (State)
                 {
@@ -613,8 +613,6 @@ namespace Npgsql
 
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 switch (State)
                 {
                 case ReaderState.BeforeResult:
@@ -786,11 +784,11 @@ namespace Npgsql
 
         #endregion
 
-        void Cancel()
+        void Cancel(bool withTimeout = true)
         {
             try
             {
-                if (Connector.CancelRequest(true) && Connector.Settings.CancellationTimeout > 0)
+                if (Connector.CancelRequest(true) && Connector.Settings.CancellationTimeout > 0 && withTimeout)
                     Connector.CommandCts.CancelAfter(Connector.Settings.CancellationTimeout * 1000);
             }
             catch
