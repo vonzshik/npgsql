@@ -237,7 +237,7 @@ namespace Npgsql
             CancellationTokenRegistration? registration = null;
 
             if (cancellationToken.CanBeCanceled)
-                registration = cancellationToken.Register(reader => ((NpgsqlDataReader)reader).Cancel(), this);
+                registration = cancellationToken.Register(reader => ((NpgsqlDataReader)reader!).Cancel(), this);
 
             try
             {
@@ -360,7 +360,7 @@ namespace Npgsql
             CancellationTokenRegistration? registration = null;
 
             if (cancellationToken.CanBeCanceled)
-                registration = cancellationToken.Register(reader => ((NpgsqlDataReader)reader).Cancel(), this);
+                registration = cancellationToken.Register(reader => ((NpgsqlDataReader)reader!).Cancel(), this);
 
             try
             {
@@ -603,7 +603,7 @@ namespace Npgsql
             CancellationTokenRegistration? registration = null;
 
             if (cancellationToken.CanBeCanceled)
-                registration = cancellationToken.Register(reader => ((NpgsqlDataReader)reader).Cancel(), this);
+                registration = cancellationToken.Register(reader => ((NpgsqlDataReader)reader!).Cancel(), this);
 
             try
             {
