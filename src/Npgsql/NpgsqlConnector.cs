@@ -149,6 +149,8 @@ namespace Npgsql
 
         volatile bool _cancellationRequested;
 
+        internal bool CancellationRequested => _cancellationRequested;
+
         /// <summary>
         /// <para>
         /// Used by the pool to indicate that I/O is currently in progress on this connector, so that another write
