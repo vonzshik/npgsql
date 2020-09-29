@@ -156,8 +156,6 @@ namespace Npgsql.Tests
             if (IsMultiplexing)
                 return; // Multiplexing, Timeout
 
-            // Mono throws a socket exception with WouldBlock instead of TimedOut (see #1330)
-            var isMono = Type.GetType("Mono.Runtime") != null;
             using var conn = await OpenConnectionAsync(ConnectionString + ";CommandTimeout=1");
             using var cmd = CreateSleepCommand(conn, 10);
             Assert.That(() => cmd.ExecuteNonQuery(), Throws.Exception
@@ -194,8 +192,6 @@ namespace Npgsql.Tests
             if (IsMultiplexing)
                 return; // Multiplexing, Timeout
 
-            // Mono throws a socket exception with WouldBlock instead of TimedOut (see #1330)
-            var isMono = Type.GetType("Mono.Runtime") != null;
             var csb = new NpgsqlConnectionStringBuilder(ConnectionString + ";CommandTimeout=1")
             {
                 SslMode = SslMode.Require,
@@ -207,7 +203,12 @@ namespace Npgsql.Tests
                 .TypeOf<NpgsqlException>()
                 .With.InnerException.TypeOf<TimeoutException>()
                 );
+            // More at issue 1501
+#if NET461
+            Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Broken));
+#else
             Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
+#endif  
         }
 
 // Timeout for async queries is not supported for .net 4.6.1
