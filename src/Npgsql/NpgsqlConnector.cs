@@ -1986,13 +1986,15 @@ namespace Npgsql
 #if NET461
             if (timeout > 0)
             {
+                // Issue 1501
                 if (IsSecure)
                     throw new NotSupportedException("Wait with timeout isn't supported when SSL is used on .NET Framework. Please consider moving to .NET Core or disabling SSL.");
-
+                // .net framework doesn't support cancellation tokens, so we're unable to timeout async reads
                 if (async)
                     throw new NotSupportedException("WaitAsync with timeout isn't supported when used on .NET Framework. Please consider moving to .NET Core.");
             }
-            else if (cancellationToken.CanBeCanceled)
+            // .net framework doesn't support cancellation tokens
+            if (cancellationToken.CanBeCanceled)
                 throw new NotSupportedException("WaitAsync with cancellation token isn't supported when used on .NET Framework. Please consider moving to .NET Core.");
 #endif
 
