@@ -78,6 +78,7 @@ namespace Npgsql.Tests
         }
 
         [Test, IssueLink("https://github.com/npgsql/npgsql/issues/1024")]
+        //[Timeout(10000)]
         public void WaitWithTimeout()
         {
             using (var conn = OpenConnection())
@@ -85,23 +86,6 @@ namespace Npgsql.Tests
                 Assert.That(conn.Wait(100), Is.EqualTo(false));
                 Assert.That(conn.ExecuteScalar("SELECT 1"), Is.EqualTo(1));
             }
-        }
-
-        [Test, IssueLink("https://github.com/npgsql/npgsql/issues/1501")]
-        public void WaitWithTimeoutAndSsl()
-        {
-            var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
-            {
-                SslMode = SslMode.Require,
-                TrustServerCertificate = true,
-            };
-            using var conn = OpenConnection(csb.ToString());
-#if NET461
-            Assert.That(() => conn.Wait(100), Throws.Exception.TypeOf<NotSupportedException>());
-#else
-            Assert.That(conn.Wait(100), Is.EqualTo(false));
-#endif
-            Assert.That(conn.ExecuteScalar("SELECT 1"), Is.EqualTo(1));
         }
 
         [Test]
