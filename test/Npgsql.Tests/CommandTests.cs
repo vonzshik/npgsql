@@ -306,8 +306,9 @@ namespace Npgsql.Tests
                         cmd.Cancel();
                     });
                     Assert.That(() => cmd.ExecuteNonQuery(), Throws
-                        .TypeOf<PostgresException>()
-                        .With.Property(nameof(PostgresException.SqlState)).EqualTo("57014")
+                        .TypeOf<OperationCanceledException>()
+                        .With.InnerException.TypeOf<PostgresException>()
+                        .With.InnerException.Property(nameof(PostgresException.SqlState)).EqualTo("57014")
                     );
                 }
             }
@@ -324,12 +325,11 @@ namespace Npgsql.Tests
             {
                 var cancellationSource = new CancellationTokenSource(300);
                 var t = cmd.ExecuteNonQueryAsync(cancellationSource.Token);
-                Assert.That(async () => await t.ConfigureAwait(false), Throws.Exception.TypeOf<PostgresException>());
+                Assert.That(async () => await t.ConfigureAwait(false), Throws.Exception.TypeOf<OperationCanceledException>()
+                    .With.InnerException.TypeOf<PostgresException>()
+                    .With.InnerException.Property(nameof(PostgresException.SqlState)).EqualTo("57014"));
 
-                // Since cancellation triggers a PostgresException and not a TaskCanceledException, the task's state
-                // is Faulted and not Canceled. This isn't amazing, but we have to choose between this and the
-                // principle of always raising server/network errors as NpgsqlException for easy catching.
-                Assert.That(t.IsFaulted);
+                Assert.That(t.IsCanceled);
                 Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
             }
         }

@@ -36,6 +36,19 @@ namespace Npgsql
         readonly NpgsqlTypeHandler?[] _typeHandlerCache;
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlBinaryExporter));
 
+        /// <summary>
+        /// Current timeout in ms
+        /// </summary>
+        public int Timeout
+        {
+            set
+            {
+                _buf.Timeout = TimeSpan.FromMilliseconds(value);
+                // While calling Complete(), we're using the connector, which overwrites the buffer's timeout with it's own
+                _connector.UserTimeout = value;
+            }
+        }
+
         #endregion
 
         #region Construction / Initialization
@@ -129,33 +142,43 @@ namespace Npgsql
             if (_isConsumed)
                 return -1;
 
-            // The very first row (i.e. _column == -1) is included in the header's CopyData message.
-            // Otherwise we need to read in a new CopyData row (the docs specify that there's a CopyData
-            // message per row).
-            if (_column == NumColumns)
-                _leftToReadInDataMsg = Expect<CopyDataMessage>(await _connector.ReadMessage(async, cancellationToken), _connector).Length;
-            else if (_column != -1)
+            if (_column != NumColumns && _column != -1)
                 throw new InvalidOperationException("Already in the middle of a row");
 
-            await _buf.Ensure(2, async, cancellationToken);
-            _leftToReadInDataMsg -= 2;
-
-            var numColumns = _buf.ReadInt16();
-            if (numColumns == -1)
+            try
             {
-                Debug.Assert(_leftToReadInDataMsg == 0);
-                Expect<CopyDoneMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
-                Expect<CommandCompleteMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
-                Expect<ReadyForQueryMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
-                _column = -1;
-                _isConsumed = true;
-                return -1;
+                // The very first row (i.e. _column == -1) is included in the header's CopyData message.
+                // Otherwise we need to read in a new CopyData row (the docs specify that there's a CopyData
+                // message per row).
+                if (_column == NumColumns)
+                    _leftToReadInDataMsg = Expect<CopyDataMessage>(await _connector.ReadMessage(async, cancellationToken), _connector).Length;
+
+                await _buf.Ensure(2, async, cancellationToken);
+                _leftToReadInDataMsg -= 2;
+
+                var numColumns = _buf.ReadInt16();
+                if (numColumns == -1)
+                {
+                    Debug.Assert(_leftToReadInDataMsg == 0);
+                    Expect<CopyDoneMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
+                    Expect<CommandCompleteMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
+                    Expect<ReadyForQueryMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
+                    _column = -1;
+                    _isConsumed = true;
+                    return -1;
+                }
+
+                Debug.Assert(numColumns == NumColumns);
+
+                _column = 0;
+                return NumColumns;
             }
-
-            Debug.Assert(numColumns == NumColumns);
-
-            _column = 0;
-            return NumColumns;
+            catch (Exception e)
+            {
+                _connector.Break(e);
+                Cleanup();
+                throw;
+            }
         }
 
         /// <summary>
@@ -254,10 +277,10 @@ namespace Npgsql
 
         async ValueTask<T> DoRead<T>(NpgsqlTypeHandler handler, bool async, CancellationToken cancellationToken = default)
         {
+            await ReadColumnLenIfNeeded(async, cancellationToken);
+
             try
             {
-                await ReadColumnLenIfNeeded(async, cancellationToken);
-
                 if (_columnLen == -1)
                 {
 #pragma warning disable CS8653 // A default expression introduces a null value when 'T' is a non-nullable reference type.
@@ -321,11 +344,20 @@ namespace Npgsql
         async Task Skip(bool async, CancellationToken cancellationToken = default)
         {
             await ReadColumnLenIfNeeded(async, cancellationToken);
-            if (_columnLen != -1)
-                await _buf.Skip(_columnLen, async, cancellationToken);
+            try
+            {
+                if (_columnLen != -1)
+                    await _buf.Skip(_columnLen, async, cancellationToken);
 
-            _columnLen = int.MinValue;
-            _column++;
+                _columnLen = int.MinValue;
+                _column++;
+            }
+            catch (Exception e)
+            {
+                _connector.Break(e);
+                Cleanup();
+                throw;
+            }
         }
 
         #endregion
@@ -334,11 +366,20 @@ namespace Npgsql
 
         async Task ReadColumnLenIfNeeded(bool async, CancellationToken cancellationToken = default)
         {
-            if (_columnLen == int.MinValue)
+            try
             {
-                await _buf.Ensure(4, async, cancellationToken);
-                _columnLen = _buf.ReadInt32();
-                _leftToReadInDataMsg -= 4;
+                if (_columnLen == int.MinValue)
+                {
+                    await _buf.Ensure(4, async, cancellationToken);
+                    _columnLen = _buf.ReadInt32();
+                    _leftToReadInDataMsg -= 4;
+                }
+            }
+            catch (Exception e)
+            {
+                _connector.Break(e);
+                Cleanup();
+                throw;
             }
         }
 
@@ -380,7 +421,7 @@ namespace Npgsql
             if (!_isConsumed)
             {
                 // Finish the current CopyData message
-                _buf.Skip(_leftToReadInDataMsg);
+                await _buf.Skip(_leftToReadInDataMsg, async, cancellationToken: default);
                 // Read to the end
                 _connector.SkipUntil(BackendMessageCode.CopyDone);
                 // We intentionally do not pass a CancellationToken since we don't want to cancel cleanup

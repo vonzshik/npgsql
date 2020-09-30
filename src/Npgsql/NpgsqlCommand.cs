@@ -1152,36 +1152,13 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
 
                     try
                     {
-                        var finalCt = CancellationToken.None;
+                        connector.ResetCancellation();
+
+                        var readCt = connector.ReadCts.Token;
+                        var writeCt = connector.WriteCts.Token;
 
                         if (cancellationToken.CanBeCanceled)
-                        {
-                            if (connector.CommandCts.IsCancellationRequested)
-                            {
-                                connector.CommandCts.Dispose();
-                                connector.CommandCts = new CancellationTokenSource();
-                            }
-
-                            registration = cancellationToken.Register(o =>
-                            {
-                                var cmd = (NpgsqlCommand)o!;
-                                var cn = cmd.Connection?.Connector;
-                                if (cn is null)
-                                    return;
-
-                                try
-                                {
-                                    cmd.Cancel(true);
-                                    if (cn.Settings.CancellationTimeout > 0)
-                                        cn.CommandCts.CancelAfter(cn.Settings.CancellationTimeout * 1000);
-                                }
-                                catch
-                                {
-                                    cn.CommandCts.Cancel();
-                                }
-                            }, this);
-                            finalCt = connector.CommandCts.Token;
-                        }
+                            registration = cancellationToken.Register(cmd => ((NpgsqlCommand)cmd!).Cancel(), this);
 
                         ValidateParameters(connector.TypeMapper);
 
@@ -1258,37 +1235,46 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                         // to prevents a dependency on the thread pool (which would also trigger deadlocks).
                         // The WriteBuffer notifies this command when the first buffer flush occurs, so that the
                         // send functions can switch to the special async mode when needed.
-                        var sendTask = NonMultiplexingWriteWrapper(connector, async, finalCt);
+                        var sendTask = NonMultiplexingWriteWrapper(connector, async, writeCt);
 
-                        // The following is a hack. It raises an exception if one was thrown in the first phases
-                        // of the send (i.e. in parts of the send that executed synchronously). Exceptions may
-                        // still happen later and aren't properly handled. See #1323.
-                        if (sendTask.IsFaulted)
-                            sendTask.GetAwaiter().GetResult();
+                        try
+                        {
+                            // The following is a hack. It raises an exception if one was thrown in the first phases
+                            // of the send (i.e. in parts of the send that executed synchronously). Exceptions may
+                            // still happen later and aren't properly handled. See #1323.
+                            if (sendTask.IsFaulted)
+                                sendTask.GetAwaiter().GetResult();
+                        }
+                        catch (OperationCanceledException e)
+                        {
+                            // User requested the cancellation - breaking the connection, as WriteBuffer doesn't do it
+                            throw connector.Break(e);
+                        }
 
                         // TODO: DRY the following with multiplexing, but be careful with the cancellation registration...
                         var reader = connector.DataReader;
                         reader.Init(this, behavior, _statements, sendTask);
                         connector.CurrentReader = reader;
                         if (async)
-                            await reader.NextResultAsync(finalCt);
+                            await reader.NextResultAsync(readCt);
                         else
                             reader.NextResult();
                         return reader;
                     }
-                    catch
+                    catch (Exception e)
                     {
                         connector.CurrentReader = null;
                         conn.Connector?.EndUserAction();
+
+                        if (connector.UserCancellationRequested && !(e is OperationCanceledException))
+                            throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
+
                         throw;
                     }
                     finally
                     {
-                        if (registration.HasValue)
-                        {
-                            registration.Value.Dispose();
-                            connector.CommandCts.CancelAfter(-1);
-                        }
+                        registration?.Dispose();
+                        connector.ReadCts.CancelAfter(-1);
                     }
                 }
                 else
@@ -1375,9 +1361,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         /// Attempts to cancel the execution of a <see cref="NpgsqlCommand">NpgsqlCommand</see>.
         /// </summary>
         /// <remarks>As per the specs, no exception will be thrown by this method in case of failure</remarks>
-        public override void Cancel() => Cancel(false);
-
-        void Cancel(bool throwExceptions)
+        public override void Cancel()
         {
             if (State != CommandState.InProgress)
                 return;
@@ -1388,7 +1372,20 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
             if (connector == null)
                 return;
 
-            connector.CancelRequest(throwExceptions);
+            try
+            {
+                if (connector.CancelRequest(throwExceptions: true))
+                {
+                    if (connector.Settings.CancellationTimeout > 0)
+                        connector.ReadCts.CancelAfter(connector.Settings.CancellationTimeout * 1000);
+                    connector.WriteCts.Cancel();
+                }
+            }
+            catch
+            {
+                connector.WriteCts.Cancel();
+                connector.ReadCts.Cancel();
+            }
         }
 
         #endregion Cancel
