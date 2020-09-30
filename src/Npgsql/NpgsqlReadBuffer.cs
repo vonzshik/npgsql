@@ -214,7 +214,7 @@ namespace Npgsql
                     case OperationCanceledException _ when (cancellationToken.IsCancellationRequested):
                         throw dontBreakOnCancellation ? e : Connector.Break(e);
                     // Timeout with ssl and mono
-                    case AggregateException _ when (isMono && e.InnerException is IOException &&
+                    case AggregateException _ when (isMono && Connector.IsSecure && e.InnerException is IOException &&
                                                     (e.InnerException.InnerException as SocketException)?.SocketErrorCode == SocketError.WouldBlock):
                     // Read timeout
                     case OperationCanceledException _:
