@@ -35,6 +35,8 @@ namespace Npgsql
 
             public override bool CanSeek => _canSeek;
 
+            public override int ReadTimeout { get => (int)_buf.Timeout.TotalMilliseconds; set => _buf.Timeout = TimeSpan.FromMilliseconds(value); }
+
             public override long Length
             {
                 get

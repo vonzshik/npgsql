@@ -214,7 +214,7 @@ namespace Npgsql
                     case OperationCanceledException _ when (cancellationToken.IsCancellationRequested):
                         throw dontBreakOnCancellation ? e : Connector.Break(e);
                     // Timeout with ssl and mono
-                    case AggregateException _ when (isMono && e.InnerException is IOException &&
+                    case AggregateException _ when (isMono && Connector.IsSecure && e.InnerException is IOException &&
                                                     (e.InnerException.InnerException as SocketException)?.SocketErrorCode == SocketError.WouldBlock):
                     // Read timeout
                     case OperationCanceledException _:
@@ -475,6 +475,21 @@ namespace Npgsql
             }
             catch (Exception e)
             {
+                var isMono = Type.GetType("Mono.Runtime") != null;
+                switch (e)
+                {
+                // Timeout with ssl and mono
+                case AggregateException _ when (isMono && Connector.IsSecure && e.InnerException is IOException &&
+                                                (e.InnerException.InnerException as SocketException)?.SocketErrorCode == SocketError.WouldBlock):
+                // Read timeout
+                // Note that mono throws SocketException with the wrong error (see #1330)
+                case IOException _ when (e.InnerException as SocketException)?.SocketErrorCode ==
+                                        (isMono ? SocketError.WouldBlock : SocketError.TimedOut):
+
+                    e = new TimeoutException("Timeout during reading attempt");
+                    break;
+                }
+
                 throw Connector.Break(new NpgsqlException("Exception while reading from stream", e));
             }
         }
@@ -498,16 +513,55 @@ namespace Npgsql
             {
                 Debug.Assert(ReadBytesLeft == 0);
                 Clear();
+
+                CancellationTokenSource? combinedCts = null;
+
                 try
                 {
-                    var read = await Underlying.ReadAsync(output, cancellationToken);
+                    var finalCt = cancellationToken;
+                    if (Timeout > TimeSpan.Zero)
+                    {
+                        // We reuse the timeout's cancellation token source as long as it hasn't fired, but once it has
+                        // there's no way to reset it (see https://github.com/dotnet/runtime/issues/4694)
+                        _timeoutCts.CancelAfter(Timeout);
+                        if (_timeoutCts.IsCancellationRequested)
+                        {
+                            _timeoutCts.Dispose();
+                            _timeoutCts = new CancellationTokenSource(Timeout);
+                        }
+                        finalCt = _timeoutCts.Token;
+
+                        if (cancellationToken.CanBeCanceled)
+                        {
+                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _timeoutCts.Token);
+                            finalCt = combinedCts.Token;
+                        }
+                    }
+
+                    var read = await Underlying.ReadAsync(output, finalCt);
                     if (read == 0)
                         throw new EndOfStreamException();
                     return read;
                 }
                 catch (Exception e)
                 {
+                    switch (e)
+                    {
+                    // User requested the cancellation
+                    case OperationCanceledException _ when (cancellationToken.IsCancellationRequested):
+                        throw Connector.Break(e);
+                    case OperationCanceledException _:
+                        e = new TimeoutException("Timeout during reading attempt");
+                        break;
+                    }
+
                     throw Connector.Break(new NpgsqlException("Exception while reading from stream", e));
+                }
+                finally
+                {
+                    // Resetting cancellation token source, so we can use it again
+                    _timeoutCts.CancelAfter(-1);
+                    combinedCts?.Dispose();
                 }
             }
         }
