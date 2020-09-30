@@ -156,8 +156,6 @@ namespace Npgsql.Tests
             if (IsMultiplexing)
                 return; // Multiplexing, Timeout
 
-            // Mono throws a socket exception with WouldBlock instead of TimedOut (see #1330)
-            var isMono = Type.GetType("Mono.Runtime") != null;
             using var conn = await OpenConnectionAsync(ConnectionString + ";CommandTimeout=1");
             using var cmd = CreateSleepCommand(conn, 10);
             Assert.That(() => cmd.ExecuteNonQuery(), Throws.Exception
@@ -178,6 +176,57 @@ namespace Npgsql.Tests
                 return; // Multiplexing, Timeout
 
             using var conn = await OpenConnectionAsync(ConnectionString + ";CommandTimeout=1");
+            using var cmd = CreateSleepCommand(conn, 10);
+            Assert.That(async () => await cmd.ExecuteNonQueryAsync(), Throws.Exception
+                .TypeOf<NpgsqlException>()
+                .With.InnerException.TypeOf<TimeoutException>()
+                );
+            Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
+        }
+#endif
+
+        [Test, Description("Checks that CommandTimeout gets enforced as a socket timeout on secure connection")]
+        [Timeout(10000)]
+        public async Task TimeoutWithSsl()
+        {
+            if (IsMultiplexing)
+                return; // Multiplexing, Timeout
+
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString + ";CommandTimeout=1")
+            {
+                SslMode = SslMode.Require,
+                TrustServerCertificate = true,
+            };
+            using var conn = await OpenConnectionAsync(csb.ToString());
+            using var cmd = CreateSleepCommand(conn, 10);
+            Assert.That(() => cmd.ExecuteNonQuery(), Throws.Exception
+                .TypeOf<NpgsqlException>()
+                .With.InnerException.TypeOf<TimeoutException>()
+                );
+            // More at issue 1501
+#if NET461
+            Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Broken));
+#else
+            Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
+#endif  
+        }
+
+// Timeout for async queries is not supported for .net 4.6.1
+#if !NET461
+        [Test, Description("Checks that CommandTimeout gets enforced for async queries on secure connection")]
+        [Timeout(10000)]
+        public async Task TimeoutAsyncWithSsl()
+        {
+            if (IsMultiplexing)
+                return; // Multiplexing, Timeout
+
+            var csb = new NpgsqlConnectionStringBuilder(ConnectionString + ";CommandTimeout=1")
+            {
+                SslMode = SslMode.Require,
+                TrustServerCertificate = true,
+            };
+
+            using var conn = await OpenConnectionAsync(csb.ToString());
             using var cmd = CreateSleepCommand(conn, 10);
             Assert.That(async () => await cmd.ExecuteNonQueryAsync(), Throws.Exception
                 .TypeOf<NpgsqlException>()

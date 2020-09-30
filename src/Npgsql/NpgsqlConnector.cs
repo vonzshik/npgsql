@@ -1180,6 +1180,14 @@ namespace Npgsql
                             try
                             {
                                 CancelRequest(throwExceptions: true, requestedByUser: false);
+
+                                #if NET461
+                                // No point in doing anything else, as the connection is already broken
+                                // See more at issue 1501
+                                if (IsSecure)
+                                    throw;
+                                #endif
+
                                 WriteCts.Cancel();
                                 _originalTimeoutException = e;
                                 ReadBuffer.Timeout = TimeSpan.FromSeconds(Settings.CancellationTimeout);

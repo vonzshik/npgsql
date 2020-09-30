@@ -207,17 +207,29 @@ namespace Npgsql
                 }
                 catch (Exception e)
                 {
+                    var isMono = Type.GetType("Mono.Runtime") != null;
                     switch (e)
                     {
                     // User requested the cancellation
                     case OperationCanceledException _ when (cancellationToken.IsCancellationRequested):
                         throw dontBreakOnCancellation ? e : Connector.Break(e);
+                    // Timeout with ssl and mono
+                    case AggregateException _ when (isMono && e.InnerException is IOException &&
+                                                    (e.InnerException.InnerException as SocketException)?.SocketErrorCode == SocketError.WouldBlock):
                     // Read timeout
                     case OperationCanceledException _:
                     // Note that mono throws SocketException with the wrong error (see #1330)
                     case IOException _ when (e.InnerException as SocketException)?.SocketErrorCode ==
-                                            (Type.GetType("Mono.Runtime") == null ? SocketError.TimedOut : SocketError.WouldBlock):
+                                            (isMono ? SocketError.WouldBlock : SocketError.TimedOut):
                         Debug.Assert(e is OperationCanceledException ? async : !async);
+
+                        #if NET461
+                        // Any IO exception with SSL stream on .net 4.6.1 will break the stream
+                        // See more at issue 1501
+                        if (Connector.IsSecure)
+                            throw Connector.Break(new NpgsqlException("Exception while reading from stream", new TimeoutException("Timeout during reading attempt")));
+                        #endif
+
                         throw new NpgsqlException("Exception while reading from stream", new TimeoutException("Timeout during reading attempt"));
                     }
 
