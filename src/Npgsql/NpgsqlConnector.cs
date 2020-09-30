@@ -147,6 +147,12 @@ namespace Npgsql
         /// </summary>
         volatile Exception? _breakReason;
 
+        volatile bool _cancellationRequested;
+
+        volatile bool _userCancellationRequested;
+
+        internal bool UserCancellationRequested => _userCancellationRequested;
+
         /// <summary>
         /// <para>
         /// Used by the pool to indicate that I/O is currently in progress on this connector, so that another write
@@ -227,7 +233,9 @@ namespace Npgsql
 
         internal int ClearCounter { get; set; }
 
-        internal CancellationTokenSource CommandCts = new CancellationTokenSource();
+        internal CancellationTokenSource WriteCts = new CancellationTokenSource();
+
+        internal CancellationTokenSource ReadCts = new CancellationTokenSource();
 
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlConnector));
 
@@ -1167,10 +1175,11 @@ namespace Npgsql
                             if (_originalTimeoutException != null)
                                 throw Break(_originalTimeoutException);
 
-                            // We have got a timeout while not reading the async notifications - trying to cancel a query
+                            // We have got a timeout while not reading async notifications - trying to cancel a query
                             try
                             {
-                                CancelRequest(throwExceptions: true);
+                                CancelRequest(throwExceptions: true, requestedByUser: false);
+                                WriteCts.Cancel();
                                 _originalTimeoutException = e;
                                 ReadBuffer.Timeout = TimeSpan.FromSeconds(Settings.CancellationTimeout);
                             }
@@ -1422,15 +1431,25 @@ namespace Npgsql
 
         /// <summary>
         /// Creates another connector and sends a cancel request through it for this connector.
+        /// Returns, whether cancel request was send.
         /// </summary>
-        internal void CancelRequest(bool throwExceptions = false)
+        internal bool CancelRequest(bool throwExceptions = false, bool requestedByUser = true)
         {
+            if (requestedByUser)
+                _userCancellationRequested = true;
+
+            if (_cancellationRequested)
+                return false;
+
             if (BackendProcessId == 0)
                 throw new NpgsqlException("Cancellation not supported on this database (no BackendKeyData was received during connection)");
 
             Log.Debug("Sending cancellation...", Id);
             lock (CancelLock)
             {
+                if (_cancellationRequested)
+                    return false;
+
                 try
                 {
                     var cancelConnector = new NpgsqlConnector(this);
@@ -1446,6 +1465,12 @@ namespace Npgsql
                             throw;
                     }
                 }
+                finally
+                {
+                    _cancellationRequested = true;
+                }
+
+                return true;
             }
         }
 
@@ -1472,6 +1497,24 @@ namespace Npgsql
             {
                 lock (this)
                     Cleanup();
+            }
+        }
+
+        internal void ResetCancellation()
+        {
+            _cancellationRequested = false;
+            _userCancellationRequested = false;
+
+            if (ReadCts.IsCancellationRequested)
+            {
+                ReadCts.Dispose();
+                ReadCts = new CancellationTokenSource();
+            }
+
+            if (WriteCts.IsCancellationRequested)
+            {
+                WriteCts.Dispose();
+                WriteCts = new CancellationTokenSource();
             }
         }
 
@@ -1943,13 +1986,15 @@ namespace Npgsql
 #if NET461
             if (timeout > 0)
             {
+                // Issue 1501
                 if (IsSecure)
                     throw new NotSupportedException("Wait with timeout isn't supported when SSL is used on .NET Framework. Please consider moving to .NET Core or disabling SSL.");
-
+                // .net framework doesn't support cancellation tokens, so we're unable to timeout async reads
                 if (async)
                     throw new NotSupportedException("WaitAsync with timeout isn't supported when used on .NET Framework. Please consider moving to .NET Core.");
             }
-            else if (cancellationToken.CanBeCanceled)
+            // .net framework doesn't support cancellation tokens
+            if (cancellationToken.CanBeCanceled)
                 throw new NotSupportedException("WaitAsync with cancellation token isn't supported when used on .NET Framework. Please consider moving to .NET Core.");
 #endif
 

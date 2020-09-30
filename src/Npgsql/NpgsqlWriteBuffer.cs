@@ -155,13 +155,16 @@ namespace Npgsql
                     Underlying.Flush();
                 }  
             }
+            // User requested the cancellation
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The connection would be broken by ReadBuffer, or Command
+                throw;
+            }
             catch (Exception e)
             {
                 switch (e)
                 {
-                // User requested the cancellation
-                case OperationCanceledException _ when (cancellationToken.IsCancellationRequested):
-                    throw Connector.Break(e);
                 // Read timeout
                 case OperationCanceledException _:
                 // Note that mono throws SocketException with the wrong error (see #1330)
