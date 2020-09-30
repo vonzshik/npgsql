@@ -163,13 +163,17 @@ namespace Npgsql
             }
             catch (Exception e)
             {
+                var isMono = Type.GetType("Mono.Runtime") != null;
                 switch (e)
                 {
+                // Timeout with ssl and mono
+                case AggregateException _ when (isMono && Connector.IsSecure && e.InnerException is IOException &&
+                                                    (e.InnerException.InnerException as SocketException)?.SocketErrorCode == SocketError.WouldBlock):
                 // Read timeout
                 case OperationCanceledException _:
                 // Note that mono throws SocketException with the wrong error (see #1330)
                 case IOException _ when (e.InnerException as SocketException)?.SocketErrorCode ==
-                                            (Type.GetType("Mono.Runtime") == null ? SocketError.TimedOut : SocketError.WouldBlock):
+                                            (isMono ? SocketError.WouldBlock : SocketError.TimedOut):
                     Debug.Assert(e is OperationCanceledException ? async : !async);
                     throw Connector.Break(new NpgsqlException("Exception while writing to stream", new TimeoutException("Timeout during writing attempt")));
                 }
