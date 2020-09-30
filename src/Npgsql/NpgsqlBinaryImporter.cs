@@ -453,9 +453,9 @@ namespace Npgsql
                 _state = ImporterState.Committed;
                 return cmdComplete.Rows;
             }
-            catch
+            catch (Exception e)
             {
-                // An exception here will have already broken the connection etc.
+                _connector.Break(e);
                 Cleanup();
                 throw;
             }
