@@ -649,8 +649,9 @@ INSERT INTO {table} (bits, bitarray) VALUES (B'101', ARRAY[B'101', B'111'])");
         public async Task ErrorDuringImport()
         {
             using (var conn = await OpenConnectionAsync())
+            using (var conn2 = await OpenConnectionAsync())
             {
-                await using var _ = await CreateTempTable(conn, "foo INT, CONSTRAINT uq UNIQUE(foo)", out var table);
+                await using var _ = await CreateTempTable(conn2, "foo INT, CONSTRAINT uq UNIQUE(foo)", out var table);
 
                 var writer = conn.BeginBinaryImport($"COPY {table} (foo) FROM STDIN BINARY");
                 writer.StartRow();
