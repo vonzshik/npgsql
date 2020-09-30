@@ -41,13 +41,16 @@ namespace Npgsql.Tests
                 using (var writer = conn.BeginBinaryImport($"COPY {table2} FROM STDIN BINARY"))
                 {
                     writer.Timeout = 3;
-                    for (var i = 1; i <= rowCount; ++i)
+                    var e = Assert.Throws<NpgsqlException>(() =>
                     {
-                        writer.StartRow();
-                        writer.Write(i);
-                    }
+                        for (var i = 1; i <= rowCount; ++i)
+                        {
+                            writer.StartRow();
+                            writer.Write(i);
+                        }
 
-                    var e = Assert.Throws<NpgsqlException>(() => writer.Complete());
+                        writer.Complete();
+                    });
                     Assert.That(e.InnerException, Is.TypeOf<TimeoutException>());
                 }
             }
