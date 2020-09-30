@@ -39,7 +39,16 @@ namespace Npgsql
 
         public override bool CanTimeout => true;
         public override int WriteTimeout { get => (int)_writeBuf.Timeout.TotalMilliseconds; set => _writeBuf.Timeout = TimeSpan.FromMilliseconds(value); }
-        public override int ReadTimeout { get => (int)_readBuf.Timeout.TotalMilliseconds; set => _readBuf.Timeout = TimeSpan.FromMilliseconds(value); }
+        public override int ReadTimeout
+        {
+            get => (int)_readBuf.Timeout.TotalMilliseconds;
+            set
+            {
+                _readBuf.Timeout = TimeSpan.FromMilliseconds(value);
+                // While calling the connector it will overwrite our read buffer timeout
+                _connector.UserTimeout = value;
+            }
+        }
 
         /// <summary>
         /// The copy binary format header signature
@@ -202,10 +211,19 @@ namespace Npgsql
                 return FlushAsync(true, cancellationToken);
         }
 
-        Task FlushAsync(bool async, CancellationToken cancellationToken = default)
+        async Task FlushAsync(bool async, CancellationToken cancellationToken = default)
         {
             CheckDisposed();
-            return _writeBuf.Flush(async, cancellationToken);
+            try
+            {
+                await _writeBuf.Flush(async, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                _connector.Break(e);
+                Cleanup();
+                throw;
+            }
         }
 
         #endregion
@@ -267,51 +285,51 @@ namespace Npgsql
             if (_isConsumed)
                 return 0;
 
-            if (_leftToReadInDataMsg == 0)
+            try
             {
-                IBackendMessage msg;
-                try
+                if (_leftToReadInDataMsg == 0)
                 {
                     // We've consumed the current DataMessage (or haven't yet received the first),
                     // read the next message
-                    msg = await _connector.ReadMessage(async, cancellationToken);
-                }
-                catch
-                {
-                    Cleanup();
-                    throw;
+                    var msg = await _connector.ReadMessage(async, cancellationToken);
+
+                    switch (msg.Code)
+                    {
+                    case BackendMessageCode.CopyData:
+                        _leftToReadInDataMsg = ((CopyDataMessage) msg).Length;
+                        break;
+                    case BackendMessageCode.CopyDone:
+                        Expect<CommandCompleteMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
+                        Expect<ReadyForQueryMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
+                        _isConsumed = true;
+                        return 0;
+                    default:
+                        throw _connector.UnexpectedMessageReceived(msg.Code);
+                    }
                 }
 
-                switch (msg.Code)
-                {
-                case BackendMessageCode.CopyData:
-                    _leftToReadInDataMsg = ((CopyDataMessage)msg).Length;
-                    break;
-                case BackendMessageCode.CopyDone:
-                    Expect<CommandCompleteMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
-                    Expect<ReadyForQueryMessage>(await _connector.ReadMessage(async, cancellationToken), _connector);
-                    _isConsumed = true;
-                    return 0;
-                default:
-                    throw _connector.UnexpectedMessageReceived(msg.Code);
-                }
+                Debug.Assert(_leftToReadInDataMsg > 0);
+
+                // If our buffer is empty, read in more. Otherwise return whatever is there, even if the
+                // user asked for more (normal socket behavior)
+                if (_readBuf.ReadBytesLeft == 0)
+                    await _readBuf.ReadMore(async, cancellationToken);
+
+                Debug.Assert(_readBuf.ReadBytesLeft > 0);
+
+                var maxCount = Math.Min(_readBuf.ReadBytesLeft, _leftToReadInDataMsg);
+                if (count > maxCount)
+                    count = maxCount;
+
+                _leftToReadInDataMsg -= count;
+                return count;
             }
-
-            Debug.Assert(_leftToReadInDataMsg > 0);
-
-            // If our buffer is empty, read in more. Otherwise return whatever is there, even if the
-            // user asked for more (normal socket behavior)
-            if (_readBuf.ReadBytesLeft == 0)
-                await _readBuf.ReadMore(async, cancellationToken);
-
-            Debug.Assert(_readBuf.ReadBytesLeft > 0);
-
-            var maxCount = Math.Min(_readBuf.ReadBytesLeft, _leftToReadInDataMsg);
-            if (count > maxCount)
-                count = maxCount;
-
-            _leftToReadInDataMsg -= count;
-            return count;
+            catch (Exception e)
+            {
+                _connector.Break(e);
+                Cleanup();
+                throw;
+            }
         }
 
         #endregion
