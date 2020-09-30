@@ -1169,7 +1169,8 @@ namespace Npgsql
                             Debug.Assert(msg != null, "Message is null for code: " + messageCode);
                             return msg;
                         }
-                        catch (NpgsqlException e) when (!readingNotifications2 && e.InnerException is TimeoutException)
+                        // Copy operation will be cancelled while closing the connection
+                        catch (NpgsqlException e) when (!readingNotifications2 && CurrentCopyOperation is null && e.InnerException is TimeoutException)
                         {
                             // Cancel request is send, but we were unable to read a response from PG due to timeout
                             if (_originalTimeoutException != null)
