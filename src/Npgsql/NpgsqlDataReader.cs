@@ -164,6 +164,10 @@ namespace Npgsql
         public override bool Read()
         {
             CheckClosed();
+
+            if (Connector.UserCancellationRequested)
+                throw new OperationCanceledException("Query was cancelled");
+
             var fastRead = TryFastRead();
             return fastRead.HasValue
                 ? fastRead.Value
@@ -184,6 +188,9 @@ namespace Npgsql
                 Cancel(false);
                 return Task.FromCanceled<bool>(cancellationToken);
             }
+
+            if (Connector.UserCancellationRequested)
+                throw new OperationCanceledException("Query was cancelled", cancellationToken);
 
             var fastRead = TryFastRead();
             if (fastRead.HasValue)
@@ -324,6 +331,8 @@ namespace Npgsql
         {
             try
             {
+                if (Connector.UserCancellationRequested)
+                    throw new OperationCanceledException("Query was cancelled");
                 return (_isSchemaOnly ? NextResultSchemaOnly(false) : NextResult(false))
                     .GetAwaiter().GetResult();
             }
@@ -348,6 +357,10 @@ namespace Npgsql
                 Cancel(false);
                 return Task.FromCanceled<bool>(cancellationToken);
             }
+
+            if (Connector.UserCancellationRequested)
+                throw new OperationCanceledException("Query was cancelled", cancellationToken);
+
             using (NoSynchronizationContextScope.Enter())
                 return _isSchemaOnly ? NextResultSchemaOnly(true, cancellationToken) : NextResult(true, cancellationToken: cancellationToken);
         }
@@ -362,6 +375,9 @@ namespace Npgsql
 
             IBackendMessage msg;
             Debug.Assert(!_isSchemaOnly);
+
+            if (Connector.UserCancellationRequested)
+                throw new OperationCanceledException("Query was cancelled", cancellationToken);
 
             CancellationTokenRegistration? registration = null;
 
