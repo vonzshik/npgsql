@@ -251,6 +251,28 @@ namespace Npgsql
 
             try
             {
+                var result = await DoRead(async);
+
+                registration?.Dispose();
+                Connector.ReadCts.CancelAfter(-1);
+                if (Connector.UserCancellationRequested)
+                    throw new OperationCanceledException("Query was cancelled", cancellationToken);
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                registration?.Dispose();
+                Connector.ReadCts.CancelAfter(-1);
+
+                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
+                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
+
+                throw;
+            }
+
+            async Task<bool> DoRead(bool async)
+            {
                 switch (State)
                 {
                 case ReaderState.BeforeResult:
@@ -287,18 +309,6 @@ namespace Npgsql
                     State = ReaderState.Consumed;
                     throw;
                 }
-            }
-            catch (Exception e)
-            {
-                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
-                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
-
-                throw;
-            }
-            finally
-            {
-                registration?.Dispose();
-                Connector.ReadCts.CancelAfter(-1);
             }
         }
 
@@ -373,7 +383,6 @@ namespace Npgsql
         {
             CheckClosed();
 
-            IBackendMessage msg;
             Debug.Assert(!_isSchemaOnly);
 
             if (Connector.UserCancellationRequested)
@@ -386,6 +395,53 @@ namespace Npgsql
 
             try
             {
+                var result = await DoNextResult(async, isConsuming);
+
+                registration?.Dispose();
+                Connector.ReadCts.CancelAfter(-1);
+
+                if (Connector.UserCancellationRequested)
+                    throw new OperationCanceledException("Query was cancelled", cancellationToken);
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                State = ReaderState.Consumed;
+
+                // Reference the triggering statement from the exception (for batching)
+                if (e is PostgresException postgresException &&
+                    StatementIndex >= 0 && StatementIndex < _statements.Count)
+                {
+                    postgresException.Statement = _statements[StatementIndex];
+                }
+
+                // An error means all subsequent statements were skipped by PostgreSQL.
+                // If any of them were being prepared, we need to update our bookkeeping to put
+                // them back in unprepared state.
+                for (; StatementIndex < _statements.Count; StatementIndex++)
+                {
+                    var statement = _statements[StatementIndex];
+                    if (statement.IsPreparing)
+                    {
+                        statement.IsPreparing = false;
+                        statement.PreparedStatement!.CompleteUnprepare();
+                    }
+                }
+
+                registration?.Dispose();
+                Connector.ReadCts.CancelAfter(-1);
+
+                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
+                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
+
+                throw;
+            }
+
+            async Task<bool> DoNextResult(bool async, bool isConsuming)
+            {
+                IBackendMessage msg;
+
                 // If we're in the middle of a resultset, consume it
                 switch (State)
                 {
@@ -467,8 +523,8 @@ namespace Npgsql
                             // RowDescription messages are cached on the connector, but if we're auto-preparing, we need to
                             // clone our own copy which will last beyond the lifetime of this invocation.
                             BackendMessageCode.RowDescription => pStatement == null
-                                ? (RowDescriptionMessage)msg
-                                : ((RowDescriptionMessage)msg).Clone(),
+                                ? (RowDescriptionMessage) msg
+                                : ((RowDescriptionMessage) msg).Clone(),
 
                             _ => throw Connector.UnexpectedMessageReceived(msg.Code)
                         };
@@ -531,40 +587,6 @@ namespace Npgsql
                 ProcessMessage(Expect<ReadyForQueryMessage>(await Connector.ReadMessage(async, ConnectorCancellationToken), Connector));
                 RowDescription = null;
                 return false;
-            }
-            catch (Exception e)
-            {
-                State = ReaderState.Consumed;
-
-                // Reference the triggering statement from the exception (for batching)
-                if (e is PostgresException postgresException &&
-                    StatementIndex >= 0 && StatementIndex < _statements.Count)
-                {
-                    postgresException.Statement = _statements[StatementIndex];
-                }
-
-                // An error means all subsequent statements were skipped by PostgreSQL.
-                // If any of them were being prepared, we need to update our bookkeeping to put
-                // them back in unprepared state.
-                for (; StatementIndex < _statements.Count; StatementIndex++)
-                {
-                    var statement = _statements[StatementIndex];
-                    if (statement.IsPreparing)
-                    {
-                        statement.IsPreparing = false;
-                        statement.PreparedStatement!.CompleteUnprepare();
-                    }
-                }
-
-                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
-                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
-
-                throw;
-            }
-            finally
-            {
-                registration?.Dispose();
-                Connector.ReadCts.CancelAfter(-1);
             }
         }
 
@@ -629,6 +651,38 @@ namespace Npgsql
 
             try
             {
+                var result = await DoNextResultSchemaOnly(async);
+
+                registration?.Dispose();
+                Connector.ReadCts.CancelAfter(-1);
+
+                if (Connector.UserCancellationRequested)
+                    throw new OperationCanceledException("Query was cancelled", cancellationToken);
+
+                return result;
+            }
+            catch (Exception e)
+            {
+                State = ReaderState.Consumed;
+
+                // Reference the triggering statement from the exception (for batching)
+                if (e is PostgresException postgresException &&
+                    StatementIndex >= 0 && StatementIndex < _statements.Count)
+                {
+                    postgresException.Statement = _statements[StatementIndex];
+                }
+
+                registration?.Dispose();
+                Connector.ReadCts.CancelAfter(-1);
+
+                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
+                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
+
+                throw;
+            }
+
+            async Task<bool> DoNextResultSchemaOnly(bool async)
+            {
                 switch (State)
                 {
                 case ReaderState.BeforeResult:
@@ -663,7 +717,7 @@ namespace Npgsql
                             break;
                         case BackendMessageCode.RowDescription:
                             // We have a resultset
-                            RowDescription = _statements[StatementIndex].Description = (RowDescriptionMessage)msg;
+                            RowDescription = _statements[StatementIndex].Description = (RowDescriptionMessage) msg;
                             Command.FixupRowDescription(RowDescription, StatementIndex == 0);
                             break;
                         default:
@@ -684,27 +738,6 @@ namespace Npgsql
                 }
 
                 return false;
-            }
-            catch (Exception e)
-            {
-                State = ReaderState.Consumed;
-
-                // Reference the triggering statement from the exception (for batching)
-                if (e is PostgresException postgresException &&
-                    StatementIndex >= 0 && StatementIndex < _statements.Count)
-                {
-                    postgresException.Statement = _statements[StatementIndex];
-                }
-
-                if (Connector.UserCancellationRequested && !(e is OperationCanceledException))
-                    throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
-
-                throw;
-            }
-            finally
-            {
-                registration?.Dispose();
-                Connector.ReadCts.CancelAfter(-1);
             }
         }
 

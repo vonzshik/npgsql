@@ -1259,10 +1259,19 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                             await reader.NextResultAsync(readCt);
                         else
                             reader.NextResult();
+
+                        registration?.Dispose();
+                        connector.ReadCts.CancelAfter(-1);
+                        if (connector.UserCancellationRequested)
+                            throw new OperationCanceledException("Query was cancelled", cancellationToken);
+
                         return reader;
                     }
                     catch (Exception e)
                     {
+                        registration?.Dispose();
+                        connector.ReadCts.CancelAfter(-1);
+
                         connector.CurrentReader = null;
                         conn.Connector?.EndUserAction();
 
@@ -1270,11 +1279,6 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                             throw new OperationCanceledException("Query was cancelled", e, cancellationToken);
 
                         throw;
-                    }
-                    finally
-                    {
-                        registration?.Dispose();
-                        connector.ReadCts.CancelAfter(-1);
                     }
                 }
                 else
