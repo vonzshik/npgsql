@@ -110,8 +110,8 @@ namespace Npgsql
         {
             // When the appdomain gets unloaded (e.g. web app redeployment) attempt to nicely
             // close idle connectors to prevent errors in PostgreSQL logs (#491).
-            AppDomain.CurrentDomain.DomainUnload += (sender, args) => ClearAll();
-            AppDomain.CurrentDomain.ProcessExit += (sender, args) => ClearAll();
+            //AppDomain.CurrentDomain.DomainUnload += (sender, args) => ClearAll();
+            //AppDomain.CurrentDomain.ProcessExit += (sender, args) => ClearAll();
         }
 
         /// <summary>
