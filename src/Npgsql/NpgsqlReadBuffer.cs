@@ -220,7 +220,7 @@ namespace Npgsql
 
                             // Note that if PG cancellation fails, the exception for that is already logged internally by CancelRequest.
                             // We simply continue and throw the timeout one.
-                            if (!wasCancellationRequested && Connector.CancelRequest(requestedByUser: false))
+                            if (!wasCancellationRequested && await Connector.CancelRequest(async, requestedByUser: false))
                             {
                                 // If the cancellation timeout is negative, we break the connection immediately
                                 var cancellationTimeout = Connector.Settings.CancellationTimeout;

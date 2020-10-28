@@ -223,6 +223,9 @@ namespace Npgsql
 
         volatile bool _cancellationRequested;
         volatile bool _userCancellationRequested;
+
+        readonly SemaphoreSlim _cancellationSemaphore = new SemaphoreSlim(1);
+
         internal CancellationToken UserCancellationToken { get; set; }
 
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlConnector));
@@ -1418,76 +1421,100 @@ namespace Npgsql
         /// delivered.
         /// </para>
         /// </returns>
-        internal bool CancelRequest(bool requestedByUser = true)
+        internal bool CancelRequest() => CancelRequest(async: false, requestedByUser: true).GetAwaiter().GetResult();
+
+        /// <summary>
+        /// Creates another connector and sends a cancel request through it for this connector.
+        /// </summary>
+        /// <returns>
+        /// <para>
+        /// <see langword="true" /> if the cancellation request was successfully delivered, or if it was skipped because a previous
+        /// request was already sent. <see langword="false"/> if the cancellation request could not be delivered because of an exception
+        /// (the method logs internally).
+        /// </para>
+        /// <para>
+        /// This does not indicate whether the cancellation attempt was successful on the PostgreSQL side - only if the request was
+        /// delivered.
+        /// </para>
+        /// </returns>
+        internal async Task<bool> CancelRequest(bool async, bool requestedByUser)
         {
             if (BackendProcessId == 0)
                 return true;
 
-            lock (CancelLock)
-            {
-                if (requestedByUser)
-                    _userCancellationRequested = true;
+            if (async)
+                await _cancellationSemaphore.WaitAsync();
+            else
+                _cancellationSemaphore.Wait();
 
+            if (requestedByUser)
+                _userCancellationRequested = true;
+
+            // In case, if the cancellation request was not successful
+            // We attempt to cancel async read immediately
+            var cancelImmediately = false;
+
+            try
+            {
                 if (_cancellationRequested)
                     return true;
 
                 Log.Debug("Sending cancellation...", Id);
                 _cancellationRequested = true;
 
-                // In case, if the cancellation request was not successful
-                // We attempt to cancel async read immediately
-                var cancelImmediately = false;
-
-                try
-                {
-                    var cancelConnector = new NpgsqlConnector(this);
-                    cancelConnector.DoCancelRequest(BackendProcessId, _backendSecretKey);
-                }
-                catch (Exception e)
-                {
-                    var socketException = e.InnerException as SocketException;
-                    if (socketException == null || socketException.SocketErrorCode != SocketError.ConnectionReset)
-                    {
-                        cancelImmediately = true;
-                        Log.Debug("Exception caught while attempting to cancel command", e, Id);
-                        return false;
-                    }
-                }
-                finally
-                {
-                    // If the cancellation request was not requested by a user
-                    // It means we've timed out, and the cancellation well be handled by the read buffers timeout
-                    if (requestedByUser)
-                    {
-                        var cancellationTimeout = Settings.CancellationTimeout;
-
-                        if (cancelImmediately || cancellationTimeout < 0)
-                            ReadBuffer.Cts.Cancel();
-                        else if (cancellationTimeout > 0)
-                            ReadBuffer.Cts.CancelAfter(Settings.CancellationTimeout);
-                    }
-                }
-
-                return true;
+                var cancelConnector = new NpgsqlConnector(this);
+                await cancelConnector.DoCancelRequest(async, BackendProcessId, _backendSecretKey);
             }
+            catch (Exception e)
+            {
+                var socketException = e.InnerException as SocketException;
+                if (socketException == null || socketException.SocketErrorCode != SocketError.ConnectionReset)
+                {
+                    cancelImmediately = true;
+                    Log.Debug("Exception caught while attempting to cancel command", e, Id);
+                    return false;
+                }
+            }
+            finally
+            {
+                _cancellationSemaphore.Release();
+
+                // If the cancellation request was not requested by a user
+                // It means we've timed out, and the cancellation well be handled by the read buffers timeout
+                if (requestedByUser)
+                {
+                    var cancellationTimeout = Settings.CancellationTimeout;
+
+                    if (cancelImmediately || cancellationTimeout < 0)
+                        ReadBuffer.Cts.Cancel();
+                    else if (cancellationTimeout > 0)
+                        ReadBuffer.Cts.CancelAfter(Settings.CancellationTimeout);
+                }
+            }
+
+            return true;
         }
 
-        void DoCancelRequest(int backendProcessId, int backendSecretKey)
+        async Task DoCancelRequest(bool async, int backendProcessId, int backendSecretKey)
         {
             Debug.Assert(State == ConnectorState.Closed);
 
             try
             {
-                RawOpen(new NpgsqlTimeout(TimeSpan.FromSeconds(ConnectionTimeout)), false, CancellationToken.None)
-                    .GetAwaiter().GetResult();
+                // TODO: use cts to cancel the request
+                var timeout = new NpgsqlTimeout(TimeSpan.FromSeconds(Settings.CancellationTimeout));
+                await RawOpen(timeout, async, CancellationToken.None);
                 WriteCancelRequest(backendProcessId, backendSecretKey);
-                Flush();
+                await Flush(async, CancellationToken.None);
+                timeout.Check();
 
                 Debug.Assert(ReadBuffer.ReadPosition == 0);
 
                 // Now wait for the server to close the connection, better chance of the cancellation
                 // actually being delivered before we continue with the user's logic.
-                var count = _stream.Read(ReadBuffer.Buffer, 0, 1);
+                var count = async
+                    ? await _stream.ReadAsync(ReadBuffer.Buffer, 0, 1, CancellationToken.None)
+                    : _stream.Read(ReadBuffer.Buffer, 0, 1);
                 if (count > 0)
                     Log.Error("Received response after sending cancel request, shouldn't happen! First byte: " + ReadBuffer.Buffer[0]);
             }
@@ -1696,6 +1723,7 @@ namespace Npgsql
             Connection = null;
             PostgresParameters.Clear();
             _currentCommand = null;
+            _cancellationSemaphore.Dispose();
 
             if (_isKeepAliveEnabled)
             {
