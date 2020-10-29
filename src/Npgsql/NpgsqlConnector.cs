@@ -148,11 +148,6 @@ namespace Npgsql
         volatile Exception? _breakReason;
 
         /// <summary>
-        /// Semaphore, used to synchronize DatabaseInfo between multiple connections, so it wouldn't be loaded in parallel.
-        /// </summary>
-        static readonly SemaphoreSlim DatabaseInfoSemaphore = new SemaphoreSlim(1);
-
-        /// <summary>
         /// <para>
         /// Used by the pool to indicate that I/O is currently in progress on this connector, so that another write
         /// isn't started concurrently. Note that since we have only one write loop, this is only ever usedto
@@ -500,18 +495,14 @@ namespace Npgsql
             // being set up (even if its empty)
             TypeMapper = new ConnectorTypeMapper(this);
 
-            NpgsqlDatabaseInfo? database;
+            var databaseInfoWrapper = NpgsqlDatabaseInfo.Cache.GetOrAdd(ConnectionString, _ => new ConcurencySafeWrapper<NpgsqlDatabaseInfo?>(null));
+            if (forceReload || databaseInfoWrapper.Value is null)
+            {
+                var semaphore = databaseInfoWrapper.Semaphore;
 
-            if (forceReload)
-            {
-                NpgsqlDatabaseInfo.Cache[ConnectionString] = database = await NpgsqlDatabaseInfo.Load(Connection,
-                    timeout, async);
-            }
-            else if (!NpgsqlDatabaseInfo.Cache.TryGetValue(ConnectionString, out database))
-            {
                 var hasSemaphore = async
-                    ? await DatabaseInfoSemaphore.WaitAsync(timeout.TimeLeft, cancellationToken)
-                    : DatabaseInfoSemaphore.Wait(timeout.TimeLeft, cancellationToken);
+                    ? await semaphore.WaitAsync(timeout.TimeLeft, cancellationToken)
+                    : semaphore.Wait(timeout.TimeLeft, cancellationToken);
 
                 // We've timed out - calling Check, to throw the correct exception
                 if (!hasSemaphore)
@@ -519,19 +510,20 @@ namespace Npgsql
 
                 try
                 {
-                    if (!NpgsqlDatabaseInfo.Cache.TryGetValue(ConnectionString, out database))
+                    databaseInfoWrapper = NpgsqlDatabaseInfo.Cache[ConnectionString];
+                    if (forceReload || databaseInfoWrapper.Value is null)
                     {
-                        NpgsqlDatabaseInfo.Cache[ConnectionString] = database = await NpgsqlDatabaseInfo.Load(Connection,
-                            timeout, async);
+                        databaseInfoWrapper.Value = await NpgsqlDatabaseInfo.Load(Connection, timeout, async);
+                        NpgsqlDatabaseInfo.Cache[ConnectionString] = databaseInfoWrapper;
                     }
                 }
                 finally
                 {
-                    DatabaseInfoSemaphore.Release();
+                    semaphore.Release();
                 }
             }
 
-            DatabaseInfo = database!;
+            DatabaseInfo = databaseInfoWrapper.Value;
             TypeMapper.Bind(DatabaseInfo);
         }
 
@@ -540,9 +532,9 @@ namespace Npgsql
             // The type loading below will need to send queries to the database, and that depends on a type mapper
             // being set up (even if its empty)
             TypeMapper = new ConnectorTypeMapper(this);
-            var found = NpgsqlDatabaseInfo.Cache.TryGetValue(ConnectionString, out var database);
+            var found = NpgsqlDatabaseInfo.Cache.TryGetValue(ConnectionString, out var database) && database.Value != null;
             Debug.Assert(found, "Rebinding type mapper but database info not found");
-            DatabaseInfo = database!;
+            DatabaseInfo = database!.Value!;
             TypeMapper.Bind(DatabaseInfo);
         }
 
