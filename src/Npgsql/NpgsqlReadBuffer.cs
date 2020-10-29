@@ -252,9 +252,17 @@ namespace Npgsql
                         }
 
                         default:
-                            throw Connector.Break(new NpgsqlException("Exception while reading from stream", e));
+                            throw Connector.Break(new NpgsqlException("Exception while reading from stream", e),
+                                returnOriginalReason: true);
                         }
                     }
+                }
+
+                Connector.BreakCts.CancelAfter(-1);
+                if (Connector.BreakCts.IsCancellationRequested)
+                {
+                    // Worst case scenario - the connection is broken (or in the process of being broken)
+                    throw Connector.Break(new NpgsqlException(), returnOriginalReason: true);
                 }
 
                 Cts.Stop();

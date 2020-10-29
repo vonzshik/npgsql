@@ -160,7 +160,8 @@ namespace Npgsql
                     throw Connector.Break(new NpgsqlException("Exception while writing to stream", new TimeoutException("Timeout during writing attempt")));
                 }
 
-                throw Connector.Break(new NpgsqlException("Exception while writing to stream", e));
+                throw Connector.Break(new NpgsqlException("Exception while writing to stream", e),
+                    returnOriginalReason: true);
             }
             NpgsqlEventSource.Log.BytesWritten(WritePosition);
             //NpgsqlEventSource.Log.RequestFailed();

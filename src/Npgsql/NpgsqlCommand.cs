@@ -1160,7 +1160,8 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                     try
                     {
                         if (cancellationToken.CanBeCanceled)
-                            registration = cancellationToken.Register(cmd => ((NpgsqlCommand)cmd!).Cancel(), this);
+                            registration = cancellationToken.Register(cmd =>
+                                ((NpgsqlCommand)cmd!).Cancel(breakOnTimeout: false), this);
 
                         ValidateParameters(connector.TypeMapper);
 
@@ -1351,7 +1352,9 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
         /// Attempts to cancel the execution of a <see cref="NpgsqlCommand">NpgsqlCommand</see>.
         /// </summary>
         /// <remarks>As per the specs, no exception will be thrown by this method in case of failure</remarks>
-        public override void Cancel()
+        public override void Cancel() => Cancel(breakOnTimeout: true);
+
+        void Cancel(bool breakOnTimeout)
         {
             if (State != CommandState.InProgress)
                 return;
@@ -1362,7 +1365,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
             if (connector == null)
                 return;
 
-            connector.CancelRequest();
+            connector.CancelRequest(breakOnTimeout: breakOnTimeout);
         }
 
         #endregion Cancel

@@ -226,6 +226,8 @@ namespace Npgsql
 
         internal bool UserCancellationRequested => _userCancellationRequested;
 
+        internal CancellationTokenSource BreakCts { get; private set; }
+
         internal CancellationToken UserCancellationToken { get; set; }
 
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlConnector));
@@ -302,6 +304,9 @@ namespace Npgsql
             Transaction = new NpgsqlTransaction(this);
 
             CancelLock = new object();
+
+            BreakCts = new CancellationTokenSource();
+            BreakCts.Token.Register(cn => ((NpgsqlConnector)cn!).Break(new NpgsqlException()), this);
 
             _isKeepAliveEnabled = Settings.KeepAlive > 0;
             if (_isKeepAliveEnabled)
@@ -1437,7 +1442,7 @@ namespace Npgsql
         /// delivered.
         /// </para>
         /// </returns>
-        internal bool CancelRequest(bool requestedByUser = true)
+        internal bool CancelRequest(bool requestedByUser = true, bool breakOnTimeout = false)
         {
             if (BackendProcessId == 0)
                 return true;
@@ -1481,9 +1486,19 @@ namespace Npgsql
                         var cancellationTimeout = Settings.CancellationTimeout;
 
                         if (cancelImmediately || cancellationTimeout < 0)
-                            ReadBuffer.Cts.Cancel();
+                        {
+                            if (breakOnTimeout)
+                                BreakCts.Cancel();
+                            else
+                                ReadBuffer.Cts.Cancel();
+                        }
                         else if (cancellationTimeout > 0)
-                            ReadBuffer.Cts.CancelAfter(Settings.CancellationTimeout);
+                        {
+                            if (breakOnTimeout)
+                                BreakCts.CancelAfter(Settings.CancellationTimeout);
+                            else
+                                ReadBuffer.Cts.CancelAfter(Settings.CancellationTimeout);
+                        }   
                     }
                 }
 
@@ -1629,8 +1644,9 @@ namespace Npgsql
         /// Note that fatal errors during the Open phase do *not* pass through here.
         /// </summary>
         /// <param name="reason">The exception that caused the break.</param>
+        /// <param name="returnOriginalReason">Return the original reason why the connector was broken</param>
         /// <returns>The exception given in <paramref name="reason"/> for chaining calls.</returns>
-        internal Exception Break(Exception reason)
+        internal Exception Break(Exception reason, bool returnOriginalReason = false)
         {
             Debug.Assert(!IsClosed);
 
@@ -1648,7 +1664,7 @@ namespace Npgsql
                     Cleanup();
                 }
 
-                return reason;
+                return returnOriginalReason ? _breakReason! : reason;
             }
         }
 
@@ -1715,6 +1731,7 @@ namespace Npgsql
             Connection = null;
             PostgresParameters.Clear();
             _currentCommand = null;
+            BreakCts.Dispose();
 
             if (_isKeepAliveEnabled)
             {
