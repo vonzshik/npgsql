@@ -1731,7 +1731,6 @@ namespace Npgsql
             Connection = null;
             PostgresParameters.Clear();
             _currentCommand = null;
-            BreakCts.Dispose();
 
             if (_isKeepAliveEnabled)
             {
