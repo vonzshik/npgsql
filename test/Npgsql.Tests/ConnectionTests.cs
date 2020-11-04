@@ -119,7 +119,6 @@ namespace Npgsql.Tests
 #endif
 
         [Test]
-        [Ignore("Fails in a non-determinstic manner and only on the build server... investigate...")]
         public void InvalidUserId()
         {
             var connString = new NpgsqlConnectionStringBuilder(ConnectionString)
