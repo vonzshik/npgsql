@@ -121,6 +121,9 @@ namespace Npgsql.Tests
         [Test]
         public void InvalidUserId()
         {
+            if (IsMultiplexing)
+                return;
+
             var connString = new NpgsqlConnectionStringBuilder(ConnectionString)
             {
                 Username = "unknown", Pooling = false
