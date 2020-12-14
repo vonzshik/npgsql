@@ -41,6 +41,14 @@ namespace Npgsql
 
         volatile bool _isBootstrapped;
 
+        public bool IsDeleted
+        {
+            get => _isDeleted;
+            set => _isDeleted = value;
+        }
+
+        volatile bool _isDeleted;
+
         volatile int _idleCount;
 
         /// <summary>

@@ -209,6 +209,9 @@ namespace Npgsql
             FullState = ConnectionState.Connecting;
             Log.Trace("Opening connection...");
 
+            if (_pool is not null && _pool.IsDeleted)
+                GetPoolAndSettings();
+
             if (Settings.Multiplexing)
             {
                 Debug.Assert(_pool != null, "Multiplexing is off by default, and cannot be on without pooling");
@@ -1868,14 +1871,14 @@ namespace Npgsql
         /// <summary>
         /// Clears the connection pool. All idle physical connections in the pool of the given connection are
         /// immediately closed, and any busy connections which were opened before <see cref="ClearPool"/> was called
-        /// will be closed when returned to the pool.
+        /// will be closed when returned to the pool. The pool itself is not removed from an internal cache.
         /// </summary>
         public static void ClearPool(NpgsqlConnection connection) => PoolManager.Clear(connection._connectionString);
 
         /// <summary>
         /// Clear all connection pools. All idle physical connections in all pools are immediately closed, and any busy
         /// connections which were opened before <see cref="ClearAllPools"/> was called will be closed when returned
-        /// to their pool.
+        /// to their pool. Also, every pool will be removed from an internal cache.
         /// </summary>
         public static void ClearAllPools() => PoolManager.ClearAll();
 
