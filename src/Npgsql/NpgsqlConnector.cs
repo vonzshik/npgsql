@@ -1084,7 +1084,7 @@ namespace Npgsql
         internal ValueTask<IBackendMessage?> ReadMessageWithNotifications(bool async)
             => ReadMessage(async, DataRowLoadingMode.NonSequential, readingNotifications: true);
 
-        internal ValueTask<IBackendMessage?> ReadMessage(
+        ValueTask<IBackendMessage?> ReadMessage(
             bool async,
             DataRowLoadingMode dataRowLoadingMode,
             bool readingNotifications)
@@ -1133,7 +1133,6 @@ namespace Npgsql
                     try
                     {
                         // TODO: There could be room for optimization here, rather than the async call(s)
-                        connector.ReadBuffer.Timeout = TimeSpan.FromMilliseconds(connector.InternalCommandTimeout);
                         for (; connector.PendingPrependedResponses > 0; connector.PendingPrependedResponses--)
                             await ReadMessageLong(connector, async, DataRowLoadingMode.Skip, readingNotifications: false, isReadingPrependedMessage: true);
                     }
@@ -1147,7 +1146,9 @@ namespace Npgsql
 
                 try
                 {
-                    connector.ReadBuffer.Timeout = TimeSpan.FromMilliseconds(connector.UserTimeout);
+                    connector.ReadBuffer.Timeout = TimeSpan.FromMilliseconds(isReadingPrependedMessage
+                        ? connector.InternalCommandTimeout
+                        : connector.UserTimeout);
 
                     while (true)
                     {
