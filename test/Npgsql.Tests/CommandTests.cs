@@ -376,49 +376,61 @@ namespace Npgsql.Tests
                 {
                     Pooling = false,
                 };
-                await using var postmasterMock = PgPostmasterMock.Start(csb.ToString(), completeCancellationImmediately: false);
-                using var _ = CreateTempPool(postmasterMock.ConnectionString, out var connectionString);
-                await using var conn = await OpenConnectionAsync(connectionString);
-                var serverMock = await postmasterMock.WaitForServerConnection();
-
-                var processId = conn.ProcessID;
-
-                using var cancellationSource = new CancellationTokenSource();
-                using var cmd = new NpgsqlCommand("SELECT 1", conn)
+                await using (var postmasterMock = PgPostmasterMock.Start(csb.ToString(), completeCancellationImmediately: false))
                 {
-                    CommandTimeout = 3
-                };
-                var t = Task.Run(() => cmd.ExecuteScalar());
-                cmd.EnsureCommandInProgress();
-                // Perform cancellation, which will block on the server side
-                var cancelTask = Task.Run(() => cmd.Cancel());
+                    using (var _ = CreateTempPool(postmasterMock.ConnectionString, out var connectionString))
+                    {
+                        await using (var conn = await OpenConnectionAsync(connectionString))
+                        {
+                            var serverMock = await postmasterMock.WaitForServerConnection();
 
-                if (isBroken)
-                {
-                    Assert.ThrowsAsync<OperationCanceledException>(async () => await t);
-                    Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Broken));
+                            var processId = conn.ProcessID;
+
+                            using var cmd = new NpgsqlCommand("SELECT 1", conn)
+                            {
+                                CommandTimeout = 3
+                            };
+                            var t = Task.Run(() => cmd.ExecuteScalar());
+                            cmd.EnsureCommandInProgress();
+                            // Perform cancellation, which will block on the server side
+                            var cancelTask = Task.Run(() => cmd.Cancel());
+
+                            if (isBroken)
+                            {
+                                Assert.ThrowsAsync<OperationCanceledException>(async () => await t);
+                                Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Broken));
+                            }
+                            else
+                            {
+                                await serverMock
+                                    .WriteParseComplete()
+                                    .WriteBindComplete()
+                                    .WriteRowDescription(new FieldDescription(PostgresTypeOIDs.Int4))
+                                    .WriteDataRow(BitConverter.GetBytes(BinaryPrimitives.ReverseEndianness(1)))
+                                    .WriteCommandComplete()
+                                    .WriteReadyForQuery()
+                                    .FlushAsync();
+                                Assert.DoesNotThrowAsync(async () => await t);
+                                Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
+                                await conn.CloseAsync();
+                            }
+
+                            step = "start await postmasterMock.WaitForCancellationRequest()";
+                            var cancellationRequest = await postmasterMock.WaitForCancellationRequest();
+                            // Release the cancellation at the server side, and make sure it completes without an exception
+                            cancellationRequest.Complete();
+                            step = "start await cancelTask";
+                            Assert.DoesNotThrowAsync(async () => await cancelTask);
+
+                            step = "conn.dispose";
+                        }
+
+                        step = "temppool.dispose";
+                    }
+
+                    step = "postmasterMock.dispose";
                 }
-                else
-                {
-                    await serverMock
-                        .WriteParseComplete()
-                        .WriteBindComplete()
-                        .WriteRowDescription(new FieldDescription(PostgresTypeOIDs.Int4))
-                        .WriteDataRow(BitConverter.GetBytes(BinaryPrimitives.ReverseEndianness(1)))
-                        .WriteCommandComplete()
-                        .WriteReadyForQuery()
-                        .FlushAsync();
-                    Assert.DoesNotThrowAsync(async () => await t);
-                    Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
-                    await conn.CloseAsync();
-                }
 
-                step = "start await postmasterMock.WaitForCancellationRequest()";
-                var cancellationRequest = await postmasterMock.WaitForCancellationRequest();
-                // Release the cancellation at the server side, and make sure it completes without an exception
-                cancellationRequest.Complete();
-                step = "start await cancelTask";
-                Assert.DoesNotThrowAsync(async () => await cancelTask);
                 step = "";
             });
 
