@@ -370,6 +370,8 @@ namespace Npgsql.Tests
                 if (IsMultiplexing)
                     return; // Multiplexing, cancellation
 
+                step = "start";
+
                 var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
                 {
                     Pooling = false,
