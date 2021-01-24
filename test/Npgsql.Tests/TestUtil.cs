@@ -362,6 +362,17 @@ namespace Npgsql.Tests
             => (behavior & CommandBehavior.SequentialAccess) != 0;
     }
 
+    public static class CommandExtensions
+    {
+        public static void EnsureCommandInProgress(this NpgsqlCommand command)
+        {
+            while (command.State != CommandState.InProgress)
+            {
+                Thread.Sleep(100);
+            }
+        }
+    }
+
     /// <summary>
     /// Semantic attribute that points to an issue linked with this test (e.g. this
     /// test reproduces the issue)

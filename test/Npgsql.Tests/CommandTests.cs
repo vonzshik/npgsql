@@ -384,7 +384,7 @@ namespace Npgsql.Tests
                 CommandTimeout = 3
             };
             var t = Task.Run(() => cmd.ExecuteScalar());
-            Thread.Sleep(300);
+            cmd.EnsureCommandInProgress();
             // Perform cancellation, which will block on the server side
             var cancelTask = Task.Run(() => cmd.Cancel());
 

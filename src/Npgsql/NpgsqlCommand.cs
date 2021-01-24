@@ -303,7 +303,7 @@ namespace Npgsql
         /// </summary>
         internal CommandState State
         {
-            private get { return (CommandState)_state; }
+            get { return (CommandState)_state; }
             set
             {
                 var newState = (int)value;
