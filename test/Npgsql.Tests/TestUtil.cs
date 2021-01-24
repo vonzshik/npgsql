@@ -366,16 +366,9 @@ namespace Npgsql.Tests
     {
         public static void EnsureCommandInProgress(this NpgsqlCommand command)
         {
-            var i = 0;
             while (command.State != CommandState.InProgress)
             {
                 Thread.Sleep(100);
-                i++;
-
-                if (i > 50)
-                {
-                    throw new Exception("EnsureCommandInProgress");
-                }
             }
         }
     }
