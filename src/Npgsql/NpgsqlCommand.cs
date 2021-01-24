@@ -296,7 +296,7 @@ namespace Npgsql
 
         #region State management
 
-        int _state;
+        volatile int _state;
 
         /// <summary>
         /// The current state of the command

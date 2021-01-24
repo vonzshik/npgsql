@@ -361,7 +361,7 @@ namespace Npgsql.Tests
         }
 
         [Test, IssueLink("https://github.com/npgsql/npgsql/issues/3466")]
-        [Timeout(6000)]
+        [Timeout(10000)]
         public async Task Bug3466([Values(false, true)] bool isBroken)
         {
             if (IsMultiplexing)
