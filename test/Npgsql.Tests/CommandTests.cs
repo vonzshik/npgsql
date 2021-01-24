@@ -405,7 +405,10 @@ namespace Npgsql.Tests
                     .FlushAsync();
                 Assert.DoesNotThrowAsync(async () => await t);
                 Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
-                await conn.CloseAsync();
+                var delayTask = Task.Delay(3000);
+                var completedTask = await Task.WhenAny(conn.CloseAsync(), delayTask);
+                if (delayTask == completedTask)
+                    throw new Exception("conn.CloseAsync");
             }
 
             var cancellationRequest = await postmasterMock.WaitForCancellationRequest();
