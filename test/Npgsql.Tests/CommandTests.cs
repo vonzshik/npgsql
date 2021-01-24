@@ -365,7 +365,8 @@ namespace Npgsql.Tests
         public async Task Bug3466([Values(false, true)] bool isBroken)
         {
             var step = "";
-            await Task.Run(async () =>
+            var delayTask = Task.Delay(15000);
+            await Task.WhenAny(delayTask, Task.Run(async () =>
             {
                 if (IsMultiplexing)
                     return; // Multiplexing, cancellation
@@ -432,7 +433,7 @@ namespace Npgsql.Tests
                 }
 
                 step = "";
-            });
+            }));
 
             if (!string.IsNullOrEmpty(step))
                 throw new Exception(step);
