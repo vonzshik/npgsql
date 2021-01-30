@@ -220,7 +220,7 @@ namespace Npgsql
 
         bool _sendResetOnClose;
 
-        ConnectorPool? _pool;
+        internal ConnectorPool? Pool { get; }
 
         /// <summary>
         /// Contains the UTC timestamp when this connector was opened, used to implement
@@ -291,7 +291,7 @@ namespace Npgsql
             : this(connection.Settings, connection.OriginalConnectionString)
         {
             Connection = connection;
-            _pool = connection.Pool;
+            Pool = connection.Pool;
             Connection.Connector = this;
             ProvideClientCertificatesCallback = Connection.ProvideClientCertificatesCallback;
             UserCertificateValidationCallback = Connection.UserCertificateValidationCallback;
@@ -1011,7 +1011,7 @@ namespace Npgsql
                         // the connector's write lock has been released (long waiting will never occur here).
                         SpinWait.SpinUntil(() => MultiplexAsyncWritingLock == 0);
 
-                        _pool!.Return(this);
+                        Pool!.Return(this);
                     }
                 }
 
@@ -1048,7 +1048,7 @@ namespace Npgsql
                 }
 
                 // "Return" the connector to the pool to for cleanup (e.g. update total connector count)
-                _pool!.Return(this);
+                Pool!.Return(this);
 
                 Log.Error("Exception in multiplexing read loop", e, Id);
             }

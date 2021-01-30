@@ -17,12 +17,12 @@ namespace Npgsql
         internal const int InitialPoolsSize = 10;
 
         static readonly object Lock = new();
-        static volatile (string Key, ConnectorPool Pool)[] _pools = new (string, ConnectorPool)[InitialPoolsSize];
+        static volatile (string Key, ConnectorPoolProxy Pool)[] _pools = new (string, ConnectorPoolProxy)[InitialPoolsSize];
         static volatile int _nextSlot;
 
-        internal static (string Key, ConnectorPool Pool)[] Pools => _pools;
+        internal static (string Key, ConnectorPoolProxy Pool)[] Pools => _pools;
 
-        internal static bool TryGetValue(string key, [NotNullWhen(true)] out ConnectorPool? pool)
+        internal static bool TryGetValue(string key, [NotNullWhen(true)] out ConnectorPoolProxy? pool)
         {
             // Note that pools never get removed. _pools is strictly append-only.
             var nextSlot = _nextSlot;
@@ -32,7 +32,6 @@ namespace Npgsql
             // And in this case, we will iterate beyond the size of the array.
             // As a safeguard, we take a min length between the array and the nextSlot.
             var minNextSlot = Math.Min(nextSlot, pools.Length);
-            var sw = new SpinWait();
 
             // First scan the pools and do reference equality on the connection strings
             for (var i = 0; i < minNextSlot; i++)
@@ -40,11 +39,6 @@ namespace Npgsql
                 var cp = pools[i];
                 if (ReferenceEquals(cp.Key, key))
                 {
-                    // It's possible that this pool entry is currently being written: the connection string
-                    // component has already been written, but the pool component is just about to be. So we
-                    // loop on the pool until it's non-null
-                    while (Volatile.Read(ref cp.Pool) == null)
-                        sw.SpinOnce();
                     pool = cp.Pool;
                     return true;
                 }
@@ -56,9 +50,6 @@ namespace Npgsql
                 var cp = pools[i];
                 if (cp.Key == key)
                 {
-                    // See comment above
-                    while (Volatile.Read(ref cp.Pool) == null)
-                        sw.SpinOnce();
                     pool = cp.Pool;
                     return true;
                 }
@@ -68,7 +59,7 @@ namespace Npgsql
             return false;
         }
 
-        internal static ConnectorPool GetOrAdd(string key, ConnectorPool pool)
+        internal static ConnectorPoolProxy GetOrAdd(string key, ConnectorPoolProxy pool)
         {
             lock (Lock)
             {
@@ -78,7 +69,7 @@ namespace Npgsql
                 // May need to grow the array.
                 if (_nextSlot == _pools.Length)
                 {
-                    var newPools = new (string, ConnectorPool)[_pools.Length * 2];
+                    var newPools = new (string, ConnectorPoolProxy)[_pools.Length * 2];
                     Array.Copy(_pools, newPools, _pools.Length);
                     _pools = newPools;
                 }
@@ -93,7 +84,7 @@ namespace Npgsql
         internal static void Clear(string connString)
         {
             if (TryGetValue(connString, out var pool))
-                pool.Clear();
+                pool.TryGet()?.Clear();
         }
 
         internal static void ClearAll()
@@ -102,9 +93,9 @@ namespace Npgsql
             {
                 // We save a reference to a previous pools array and reset it. After that, we delete every previous pool.
                 // Doing it that way, we're guarding against a concurrent TryGetValue
-                // (for example, if the connection is open after IsDeleted flag is set but before the pools aray is reset),
+                // (for example, if the connection is open after a proxy is cleared but before the pools aray is reset),
                 // as any new connection will have to create a new pool
-                // and any cached non-open connection will also create a new pool (because we will set a IsDeleted flag).
+                // and any cached non-open connection will also create a new pool (because we will clear a proxy).
                 // TODO: there is still a problem with a cached open connection, which will still be using the old pool, instead of the new one
                 var pools = _pools;
                 var nextSlot = _nextSlot;
@@ -112,7 +103,7 @@ namespace Npgsql
                 // _nextSlot should be changed before the _pools.
                 // Otherwise, there will be a race condition with TryGetValue.
                 _nextSlot = 0;
-                _pools = new (string, ConnectorPool)[InitialPoolsSize];
+                _pools = new (string, ConnectorPoolProxy)[InitialPoolsSize];
 
                 for (var i = 0; i < nextSlot; i++)
                 {
@@ -128,7 +119,7 @@ namespace Npgsql
                     
                     if (cp.Pool is not null)
                     {
-                        cp.Pool.IsDeleted = true;
+                        cp.Pool.TryGet()?.Clear();
                         cp.Pool.Clear();
                     }
                 }

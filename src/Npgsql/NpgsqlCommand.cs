@@ -1269,6 +1269,7 @@ GROUP BY pg_proc.proargnames, pg_proc.proargtypes, pg_proc.proallargtypes, pg_pr
                             "Synchronous command execution is not supported when multiplexing is on");
                     }
 
+                    conn.SetCurrentPool();
                     ValidateParameters(conn.Pool!.MultiplexingTypeMapper!);
                     ProcessRawQuery(standardConformingStrings: true, deriveParameters: false);
 

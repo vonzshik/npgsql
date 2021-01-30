@@ -62,6 +62,7 @@ namespace Npgsql
 
         static readonly NpgsqlConnectionStringBuilder DefaultSettings = new();
 
+        ConnectorPoolProxy? _poolProxy;
         ConnectorPool? _pool;
         internal ConnectorPool? Pool => _pool;
 
@@ -155,10 +156,14 @@ namespace Npgsql
 
         void GetPoolAndSettings()
         {
-            if (PoolManager.TryGetValue(_connectionString, out _pool))
+            if (PoolManager.TryGetValue(_connectionString, out _poolProxy))
             {
-                Settings = _pool.Settings;  // Great, we already have a pool
-                return;
+                var pool = _poolProxy.TryGet();
+                if (pool is not null)
+                {
+                    Settings = pool.Settings;  // Great, we already have a pool
+                    return;
+                }
             }
 
             // Connection string hasn't been seen before. Parse it.
@@ -175,30 +180,40 @@ namespace Npgsql
             // and recheck.
             var canonical = Settings.ConnectionString;
 
-            if (PoolManager.TryGetValue(canonical, out _pool))
+            if (PoolManager.TryGetValue(canonical, out _poolProxy))
             {
                 // The pool was found, but only under the canonical key - we're using a different version
                 // for the first time. Map it via our own key for next time.
-                _pool = PoolManager.GetOrAdd(_connectionString, _pool);
+                _poolProxy = PoolManager.GetOrAdd(_connectionString, _poolProxy);
                 return;
             }
 
             // Really unseen, need to create a new pool
             // The canonical pool is the 'base' pool so we need to set that up first. If someone beats us to it use what they put.
             // The connection string pool can either be added here or above, if it's added above we should just use that.
-            var newPool = new ConnectorPool(Settings, canonical);
-            _pool = PoolManager.GetOrAdd(canonical, newPool);
+            var newPool = new ConnectorPoolProxy(new ConnectorPool(Settings, canonical));
+            _poolProxy = PoolManager.GetOrAdd(canonical, newPool);
 
             // If the pool we created was the one that ended up being stored we need to increment the appropriate counter.
             // Avoids a race condition where multiple threads will create a pool but only one will be stored.
-            if (_pool == newPool)
+            if (_poolProxy == newPool)
             {
                 // If the pool we created was the one that ended up being stored we need to increment the appropriate counter.
                 // Avoids a race condition where multiple threads will create a pool but only one will be stored.
                 NpgsqlEventSource.Log.PoolCreated(newPool);
             }
 
-            _pool = PoolManager.GetOrAdd(_connectionString, _pool);
+            _poolProxy = PoolManager.GetOrAdd(_connectionString, _poolProxy);
+        }
+
+        internal void SetCurrentPool()
+        {
+            _pool = _poolProxy!.TryGet();
+            while (_pool is null)
+            {
+                GetPoolAndSettings();
+                _pool = _poolProxy.TryGet();
+            }
         }
 
         internal Task Open(bool async, CancellationToken cancellationToken)
@@ -209,8 +224,8 @@ namespace Npgsql
             FullState = ConnectionState.Connecting;
             Log.Trace("Opening connection...");
 
-            if (_pool is not null && _pool.IsDeleted)
-                GetPoolAndSettings();
+            if (_poolProxy is not null)
+                SetCurrentPool();
 
             if (Settings.Multiplexing)
             {
@@ -307,10 +322,14 @@ namespace Npgsql
 
                     if (connector != null)
                     {
-                        if (_pool == null)
+                        if (_poolProxy == null)
                             connector.Close();
                         else
+                        {
+                            Debug.Assert(_pool is not null);
                             _pool.Return(connector);
+                            _pool = null;
+                        }
                     }
 
                     throw;
@@ -790,7 +809,7 @@ namespace Npgsql
                 }
                 else
                 {
-                    if (_pool == null)
+                    if (_poolProxy is null)
                         connector.Close();
                     else
                     {
@@ -807,12 +826,14 @@ namespace Npgsql
                         }
                         else
                         {
+                            Debug.Assert(_pool is not null);
                             connector.Connection = null;
                             _pool.Return(connector);
                         }
                     }
                 }
 
+                _pool = null;
                 Connector = null;
                 ConnectorBindingScope = ConnectorBindingScope.None;
                 FullState = ConnectionState.Closed;
@@ -1666,9 +1687,10 @@ namespace Npgsql
             async ValueTask<NpgsqlConnector> StartBindingScopeAsync()
             {
                 Debug.Assert(Settings.Multiplexing);
-                Debug.Assert(_pool != null);
+                Debug.Assert(_poolProxy is not null);
+                SetCurrentPool();
 
-                var connector = await _pool.Rent(this, timeout, async, cancellationToken);
+                var connector = await _pool!.Rent(this, timeout, async, cancellationToken);
                 ConnectorBindingScope = scope;
                 return connector;
             }
@@ -1717,6 +1739,7 @@ namespace Npgsql
             connector.Connection = null;
             connector.Transaction?.UnbindIfNecessary();
             _pool.Return(connector);
+            _pool = null;
             ConnectorBindingScope = ConnectorBindingScope.None;
         }
 
@@ -1856,6 +1879,7 @@ namespace Npgsql
             Close();
 
             _pool = null;
+            _poolProxy = null;
             Settings = Settings.Clone();
             Settings.Database = dbName;
             ConnectionString = Settings.ToString();

@@ -44,7 +44,7 @@ namespace Npgsql
         long _failedCommands;
 
         readonly object _poolsLock = new();
-        readonly HashSet<ConnectorPool> _pools = new();
+        readonly HashSet<ConnectorPoolProxy> _pools = new();
 
         long _multiplexingBatchesSent;
         long _multiplexingCommandsSent;
@@ -81,7 +81,7 @@ namespace Npgsql
 
         internal void CommandFailed() => Interlocked.Increment(ref _failedCommands);
 
-        internal void PoolCreated(ConnectorPool pool)
+        internal void PoolCreated(ConnectorPoolProxy pool)
         {
             lock (_poolsLock)
             {
@@ -108,7 +108,7 @@ namespace Npgsql
                 var sum = 0;
                 foreach (var pool in _pools)
                 {
-                    sum += pool.Statistics.Idle;
+                    sum += pool.TryGet()?.Statistics.Idle ?? 0;
                 }
                 return sum;
             }
@@ -123,7 +123,7 @@ namespace Npgsql
                 var sum = 0;
                 foreach (var pool in _pools)
                 {
-                    sum += pool.Statistics.Busy;
+                    sum += pool.TryGet()?.Statistics.Busy ?? 0;
                 }
                 return sum;
             }

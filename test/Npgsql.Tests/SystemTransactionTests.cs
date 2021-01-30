@@ -145,7 +145,8 @@ namespace Npgsql.Tests
                 scope.Complete();
             }
             AssertNumberOfRows(1);
-            Assert.True(PoolManager.TryGetValue(connString, out var pool));
+            Assert.True(PoolManager.TryGetValue(connString, out var poolProxy));
+            var pool = poolProxy!.TryGet();
             Assert.That(pool!.Statistics.Idle, Is.EqualTo(1));
 
             using (var conn = new NpgsqlConnection(connString))
