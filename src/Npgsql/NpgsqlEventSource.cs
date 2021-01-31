@@ -89,6 +89,14 @@ namespace Npgsql
             }
         }
 
+        internal void PoolDeleted(ConnectorPool pool)
+        {
+            lock (_poolsLock)
+            {
+                _pools.Remove(pool);
+            }
+        }
+
         internal void MultiplexingBatchSent(int numCommands, int waits, Stopwatch stopwatch)
         {
             // TODO: CAS loop instead of 4 separate interlocked operations?

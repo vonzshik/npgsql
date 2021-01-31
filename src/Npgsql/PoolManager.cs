@@ -76,6 +76,9 @@ namespace Npgsql
                 _pools[_nextSlot].Key = key;
                 _pools[_nextSlot].Pool = pool;
                 Interlocked.Increment(ref _nextSlot);
+
+                NpgsqlEventSource.Log.PoolCreated(pool);
+
                 return pool;
             }
         }
@@ -110,7 +113,9 @@ namespace Npgsql
 
                 Interlocked.Decrement(ref _nextSlot);
                 _pools = newPools;
-            }    
+
+                NpgsqlEventSource.Log.PoolDeleted(pool);
+            }
         }
 
         internal static void Clear(string connString)
@@ -151,6 +156,13 @@ namespace Npgsql
             lock (Lock)
             {
                 ClearAll();
+                var pools = _pools;
+                foreach (var (_, pool) in pools)
+                {
+                    if (pool != null)
+                        NpgsqlEventSource.Log.PoolDeleted(pool);
+                }
+                
                 _pools = new (string, ConnectorPool)[InitialPoolsSize];
                 _nextSlot = 0;
             }
