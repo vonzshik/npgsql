@@ -654,13 +654,14 @@ namespace Npgsql.Tests
 
             conn.Open();
             Assert.That(conn.FullState, Is.EqualTo(ConnectionState.Open));
-            if (keepAlive)
+            if (keepAlive || RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 Assert.That(conn.ProcessID, Is.Not.EqualTo(connectorId));
                 Assert.That(await conn.ExecuteScalarAsync("SELECT 1"), Is.EqualTo(1));
             }
             else
             {
+                // with postgres on windows the connection is broken immediately, without any response
                 Assert.That(conn.ProcessID, Is.EqualTo(connectorId));
                 Assert.That(async () => await conn.ExecuteScalarAsync("SELECT 1"), Throws.Exception
                     .AssignableTo<NpgsqlException>());

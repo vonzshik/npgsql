@@ -249,6 +249,8 @@ namespace Npgsql
 
         internal readonly Stopwatch QueryLogStopWatch = new();
 
+        internal bool HasAvailable => _socket?.Available > 0;
+
         #endregion
 
         #region Constants
@@ -1200,6 +1202,11 @@ namespace Npgsql
                                 // During the startup/authentication phase, an ErrorResponse isn't followed by
                                 // an RFQ. Instead, the server closes the connection immediately
                                 throw error;
+                            }
+                            else if (error.SqlState == PostgresErrorCodes.AdminShutdown)
+                            {
+                                // If the backend has been shut down, there will be no rfq
+                                throw connector.Break(error);
                             }
 
                             continue;

@@ -277,6 +277,22 @@ namespace Npgsql
             // Only decrement when the connector has a value.
             Interlocked.Decrement(ref _idleCount);
 
+            if (!connector.IsBroken && connector.HasAvailable)
+            {
+                try
+                {
+                    // safeguard against keepalive
+                    lock (connector)
+                    {
+                        connector.ReadMessage();
+                    }
+                }
+                catch
+                {
+                    Debug.Assert(connector.IsBroken);
+                }
+            }
+
             // An connector could be broken because of a keepalive that occurred while it was
             // idling in the pool
             // TODO: Consider removing the pool from the keepalive code. The following branch is simply irrelevant
