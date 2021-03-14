@@ -247,7 +247,6 @@ namespace Npgsql
         static readonly NpgsqlLogger Log = NpgsqlLogManager.CreateLogger(nameof(NpgsqlConnector));
 
         private string? ConnectedHost;
-        internal TargetServerType ConnectedServerType;
 
         internal readonly Stopwatch QueryLogStopWatch = new();
 
@@ -488,11 +487,11 @@ namespace Npgsql
                         }
 
                         await LoadDatabaseInfo(forceReload: false, timeout, async, cancellationToken);
-                        UpdateServerPrimaryStatus();
 
-                        if (IsAppropriateFor(Settings.TargetServerType) == false)
+                        var serverType = GetServerPrimaryStatus();
+                        if (!IsAppropriateFor(serverType))
                         {
-                            throw new NpgsqlException($"Connected Server was of type {ConnectedServerType} however we wanted {Settings.TargetServerType} and it is not appropriate for this connection");
+                            throw new NpgsqlException($"Connected Server was of type {serverType} however we wanted {Settings.TargetServerType} and it is not appropriate for this connection");
                         }
 
                         if (Settings.Pooling && !Settings.Multiplexing && !Settings.NoResetOnClose && DatabaseInfo.SupportsDiscard)
@@ -504,7 +503,7 @@ namespace Npgsql
                         OpenTimestamp = DateTime.UtcNow;
                         ConnectedHost = potentialHost;
 
-                        Log.Trace($"Opened connection to {Host}:{Port} as {ConnectedHost}:{Port} with type: {ConnectedServerType}");
+                        Log.Trace($"Opened connection to {Host}:{Port} as {ConnectedHost}:{Port} with type: {serverType}");
 
                         if (Settings.Multiplexing)
                         {
@@ -596,8 +595,7 @@ namespace Npgsql
             TypeMapper.Bind(DatabaseInfo);
         }
 
-
-        internal void UpdateServerPrimaryStatus()
+        internal TargetServerType GetServerPrimaryStatus()
         {
             StartUserAction();
             WritePregenerated(PregeneratedMessages.ServerIsSecondary);
@@ -612,19 +610,19 @@ namespace Npgsql
             ReadBuffer.ReadBytes(resultSetBuffer, 0, lengthOfBooleanColumn);
 
             var serverIsPrimary = resultSetBuffer[0] == 'f';
-            ConnectedServerType = serverIsPrimary ? TargetServerType.Primary : TargetServerType.Secondary;
+            var connectedServerType = serverIsPrimary ? TargetServerType.Primary : TargetServerType.Secondary;
 
             SkipUntil(BackendMessageCode.ReadyForQuery);
             EndUserAction();
+            return connectedServerType;
         }
 
-        internal bool IsAppropriateFor(TargetServerType requestedServerType)
+        internal bool IsAppropriateFor(TargetServerType serverType)
         {
-            if (requestedServerType == TargetServerType.Any)
+            if (Settings.TargetServerType == TargetServerType.Any)
                 return true;
-            return ConnectedServerType == requestedServerType;
+            return Settings.TargetServerType == serverType;
         }
-
 
         void WriteStartupMessage(string username)
         {
@@ -2175,10 +2173,10 @@ namespace Npgsql
                     return;
 
                 Log.Trace("Performed keepalive", Id);
-                UpdateServerPrimaryStatus();
-                if(IsAppropriateFor(Settings.TargetServerType) == false)
+                var serverType = GetServerPrimaryStatus();
+                if (!IsAppropriateFor(serverType))
                 {
-                    throw new NpgsqlException($"Server {ConnectedHost} is now {ConnectedServerType} and is no longer appropriate for this connection (requested: {Settings.TargetServerType})");
+                    throw new NpgsqlException($"Server {ConnectedHost} is now {serverType} and is no longer appropriate for this connection (requested: {Settings.TargetServerType})");
                 }
             }
             catch (Exception e)

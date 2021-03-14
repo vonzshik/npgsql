@@ -361,7 +361,7 @@ namespace Npgsql
             // throw it away. The same if it's broken (in which case CloseConnector is only
             // used to update state/perf counter).
             
-            if (connector.ClearCounter < _clearCounter || connector.IsBroken || connector.IsAppropriateFor(connector.Settings.TargetServerType) == false)
+            if (connector.ClearCounter < _clearCounter || connector.IsBroken)
             {
                 CloseConnector(connector);
                 return;
