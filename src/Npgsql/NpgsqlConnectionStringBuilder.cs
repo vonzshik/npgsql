@@ -1770,7 +1770,6 @@ namespace Npgsql
     /// <summary>
     /// Specifies server type preference.
     /// </summary>
-    [Flags]
     public enum TargetServerType : byte
     {
         /// <summary>
@@ -1786,7 +1785,7 @@ namespace Npgsql
         /// <summary>
         /// Secondary (readonly) server is selected for the connection. Falls back to Primary (writable), if none are available.
         /// </summary>
-        PreferSecondary = Secondary | Any,
+        PreferSecondary = 3,
 
         /// <summary>
         ///  Primary (writable) server is selected for the connection.
@@ -1796,7 +1795,7 @@ namespace Npgsql
         /// <summary>
         /// Primary (writable) server is selected for the connection. Falls back to Secondary (readonly), if none are available.
         /// </summary>
-        PreferPrimary = Primary | Any,
+        PreferPrimary = 5,
     }
 
     #endregion
