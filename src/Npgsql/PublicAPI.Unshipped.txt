@@ -12,11 +12,11 @@ Npgsql.NpgsqlConnectionStringBuilder.ClusterRecheckSeconds.set -> void
 Npgsql.NpgsqlConnectionStringBuilder.TargetSessionAttributes.get -> Npgsql.TargetSessionAttributes
 Npgsql.NpgsqlConnectionStringBuilder.TargetSessionAttributes.set -> void
 Npgsql.TargetSessionAttributes
-Npgsql.TargetSessionAttributes.Any = 1 -> Npgsql.TargetSessionAttributes
-Npgsql.TargetSessionAttributes.PreferPrimary = 5 -> Npgsql.TargetSessionAttributes
-Npgsql.TargetSessionAttributes.PreferSecondary = 3 -> Npgsql.TargetSessionAttributes
-Npgsql.TargetSessionAttributes.Primary = 4 -> Npgsql.TargetSessionAttributes
-Npgsql.TargetSessionAttributes.Secondary = 2 -> Npgsql.TargetSessionAttributes
+Npgsql.TargetSessionAttributes.Any = 0 -> Npgsql.TargetSessionAttributes
+Npgsql.TargetSessionAttributes.PreferPrimary = 4 -> Npgsql.TargetSessionAttributes
+Npgsql.TargetSessionAttributes.PreferSecondary = 2 -> Npgsql.TargetSessionAttributes
+Npgsql.TargetSessionAttributes.Primary = 3 -> Npgsql.TargetSessionAttributes
+Npgsql.TargetSessionAttributes.Secondary = 1 -> Npgsql.TargetSessionAttributes
 NpgsqlTypes.NpgsqlTsQuery.Write(System.Text.StringBuilder! stringBuilder) -> void
 override NpgsqlTypes.NpgsqlTsQuery.Equals(object? obj) -> bool
 override NpgsqlTypes.NpgsqlTsQuery.GetHashCode() -> int
