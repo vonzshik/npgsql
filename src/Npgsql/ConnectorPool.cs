@@ -38,6 +38,10 @@ namespace Npgsql
 
         internal int IdleCount => _idleCount;
 
+        volatile int _numExtraConnectors;
+
+        readonly int _maxExtraConnectors;
+
         /// <summary>
         /// Tracks all connectors currently managed by this pool, whether idle or busy.
         /// Only updated rarely - when physical connections are opened/closed - but is read in perf-sensitive contexts.
@@ -82,7 +86,7 @@ namespace Npgsql
         {
             get
             {
-                var numConnectors = _numConnectors;
+                var numConnectors = _numConnectors + _numExtraConnectors;
                 var idleCount = _idleCount;
                 return (numConnectors, idleCount, numConnectors - idleCount);
             }
@@ -125,11 +129,15 @@ namespace Npgsql
             _autoPrepare = settings.MaxAutoPrepare > 0;
             _connectionLifetime = TimeSpan.FromSeconds(settings.ConnectionLifetime);
             _connectors = new NpgsqlConnector[_max];
+            _maxExtraConnectors = settings.ExtraPoolCapacity;
 
             // TODO: Validate multiplexing options are set only when Multiplexing is on
 
             if (Settings.Multiplexing)
             {
+                if (settings.ExtraPoolCapacity > 0)
+                    throw new ArgumentException("ExtraPoolCapacity is not supported with multiplexing");
+
                 _multiplexing = true;
 
                 _bootstrapSemaphore = new SemaphoreSlim(1);
@@ -339,6 +347,27 @@ namespace Npgsql
                 }
             }
 
+            for (var numExtraConnectors = _numExtraConnectors; numExtraConnectors < _maxExtraConnectors; numExtraConnectors = _numExtraConnectors)
+            {
+                if (Interlocked.CompareExchange(ref _numExtraConnectors, numExtraConnectors + 1, numExtraConnectors) != numExtraConnectors)
+                    continue;
+
+                try
+                {
+                    var connector = new NpgsqlConnector(conn, this) { IsExtra = true };
+                    await connector.Open(timeout, async, cancellationToken);
+                    return connector;
+                }
+                catch
+                {
+                    // Physical open failed, decrement the open and busy counter back down.
+                    conn.Connector = null;
+                    Interlocked.Decrement(ref _numExtraConnectors);
+
+                    throw;
+                }
+            }
+
             return null;
         }
 
@@ -347,6 +376,22 @@ namespace Npgsql
             Debug.Assert(!connector.InTransaction);
             Debug.Assert(connector.MultiplexAsyncWritingLock == 0 || connector.IsBroken || connector.IsClosed,
                 $"About to return multiplexing connector to the pool, but {nameof(connector.MultiplexAsyncWritingLock)} is {connector.MultiplexAsyncWritingLock}");
+
+            if (connector.IsExtra)
+            {
+                try
+                {
+                    connector.Close();
+                }
+                catch (Exception e)
+                {
+                    Log.Warn("Exception while closing connector", e, connector.Id);
+                }
+
+                Interlocked.Decrement(ref _numExtraConnectors);
+
+                return;
+            }
 
             // If Clear/ClearAll has been been called since this connector was first opened,
             // throw it away. The same if it's broken (in which case CloseConnector is only

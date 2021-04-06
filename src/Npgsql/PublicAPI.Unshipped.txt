@@ -6,6 +6,8 @@ Npgsql.NpgsqlConnection.BeginRawBinaryCopyAsync(string! copyCommand, System.Thre
 Npgsql.NpgsqlConnection.BeginTextExportAsync(string! copyToCommand, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.IO.TextReader!>!
 Npgsql.NpgsqlConnection.BeginTextImportAsync(string! copyFromCommand, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.IO.TextWriter!>!
 Npgsql.NpgsqlConnection.Settings.get -> Npgsql.NpgsqlConnectionStringBuilder!
+Npgsql.NpgsqlConnectionStringBuilder.ExtraPoolCapacity.get -> int
+Npgsql.NpgsqlConnectionStringBuilder.ExtraPoolCapacity.set -> void
 Npgsql.NpgsqlConnectionStringBuilder.HostRecheckSeconds.get -> int
 Npgsql.NpgsqlConnectionStringBuilder.HostRecheckSeconds.set -> void
 Npgsql.NpgsqlConnectionStringBuilder.LoadBalanceHosts.get -> bool
