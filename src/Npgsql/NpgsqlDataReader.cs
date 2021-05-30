@@ -759,7 +759,7 @@ namespace Npgsql
         /// <summary>
         /// Gets a value indicating whether the data reader is closed.
         /// </summary>
-        public override bool IsClosed => State == ReaderState.Closed;
+        public override bool IsClosed => State == ReaderState.Closed || State == ReaderState.Disposed;
 
         /// <summary>
         /// Gets the number of rows changed, inserted, or deleted by execution of the SQL statement.
@@ -782,8 +782,10 @@ namespace Npgsql
         /// <summary>
         /// Gets a value that indicates whether this DbDataReader contains one or more rows.
         /// </summary>
-        public override bool HasRows => State == ReaderState.Closed
-            ? throw new InvalidOperationException("Invalid attempt to call HasRows when reader is closed.")
+        public override bool HasRows => IsClosed
+            ? throw (State == ReaderState.Closed
+                ? new InvalidOperationException("Invalid attempt to call HasRows when reader is closed.")
+                : new ObjectDisposedException(nameof(NpgsqlDataReader)))
             : _hasRows;
 
         /// <summary>
@@ -1814,8 +1816,7 @@ namespace Npgsql
         {
             if (string.IsNullOrEmpty(name))
                 throw new ArgumentException("name cannot be empty", nameof(name));
-            if (State == ReaderState.Closed)
-                throw new InvalidOperationException("The reader is closed");
+            CheckClosedOrDisposed();
             if (RowDescription is null)
                 throw new InvalidOperationException("No resultset is currently being traversed");
             return RowDescription.GetFieldIndex(name);
@@ -1876,7 +1877,11 @@ namespace Npgsql
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
             if (State != ReaderState.InResult)
-                throw new InvalidOperationException("No row is available");
+            {
+                throw State == ReaderState.Disposed
+                    ? new ObjectDisposedException(nameof(NpgsqlDataReader))
+                    : new InvalidOperationException("No row is available");
+            }
 
             var count = Math.Min(FieldCount, values.Length);
             for (var i = 0; i < count; i++)
