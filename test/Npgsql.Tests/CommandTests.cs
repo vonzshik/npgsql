@@ -686,7 +686,7 @@ namespace Npgsql.Tests
         [Test]
         public async Task NonStandardsConformingStrings()
         {
-            using var _ = CreateTempPool(ConnectionString, out var connString)
+            using var _ = CreateTempPool(ConnectionString, out var connString);
             await using var conn = await OpenConnectionAsync(connString);
 
             if (IsMultiplexing)
