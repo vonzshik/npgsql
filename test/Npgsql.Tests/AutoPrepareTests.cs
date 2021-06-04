@@ -57,7 +57,8 @@ namespace Npgsql.Tests
                 MaxAutoPrepare = 2
             };
 
-            using var conn = OpenConnection(csb);
+            using var _ = CreateTempPool(csb, out var connString);
+            using var conn = OpenConnection(connString);
             using var checkCmd = new NpgsqlCommand(CountPreparedStatements, conn);
             checkCmd.Prepare();
 

@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Npgsql.Tests
 {
+    [NonParallelizable]
     class ReadBufferTests
     {
         [Test]
