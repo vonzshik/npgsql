@@ -15,6 +15,7 @@ using static Npgsql.Tests.TestUtil;
 
 namespace Npgsql.Tests
 {
+    [NonParallelizable]
     public class MultipleHostsTests : TestBase
     {
         static readonly object[] MyCases =
@@ -38,7 +39,7 @@ namespace Npgsql.Tests
             new object[] { "read-only",      new[] { PrimaryReadOnly, Standby         }, 0 }
         };
 
-        [Test]
+        [Test, Parallelizable]
         [TestCaseSource(nameof(MyCases))]
         public async Task Connect_to_correct_host(string targetSessionAttributes, MockState[] servers, int expectedServer)
         {
@@ -61,7 +62,7 @@ namespace Npgsql.Tests
                 _ = await postmasters[i].WaitForServerConnection();
         }
 
-        [Test]
+        [Test, Parallelizable]
         [TestCaseSource(nameof(MyCases))]
         public async Task Connect_to_correct_host_with_available_idle(
             string targetSessionAttributes, MockState[] servers, int expectedServer)
@@ -104,7 +105,7 @@ namespace Npgsql.Tests
                 _ = await postmasters[i].WaitForServerConnection();
         }
 
-        [Test]
+        [Test, Parallelizable]
         [TestCase("standby",   new[] { Primary,         Primary })]
         [TestCase("primary",   new[] { Standby,         Standby })]
         [TestCase("read-write", new[] { PrimaryReadOnly, Standby })]
@@ -131,7 +132,7 @@ namespace Npgsql.Tests
                 _ = await postmasters[i].WaitForServerConnection();
         }
 
-        [Test]
+        [Test, Parallelizable]
         [Description("Test that enlist returns a new connector if a previous connector is for an incompatible server type")]
         public async Task Enlist_depends_on_session_attributes()
         {
@@ -209,7 +210,7 @@ namespace Npgsql.Tests
             await standbyPostmaster.WaitForServerConnection();
         }
 
-        [Test]
+        [Test, Parallelizable]
         public void All_hosts_are_down()
         {
             var endpoint = new IPEndPoint(IPAddress.Loopback, 0);
@@ -241,7 +242,7 @@ namespace Npgsql.Tests
             }
         }
 
-        [Test]
+        [Test, Parallelizable]
         public async Task First_host_is_down()
         {
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -262,7 +263,7 @@ namespace Npgsql.Tests
             Assert.That(conn.Port, Is.EqualTo(postmaster.Port));
         }
 
-        [Test]
+        [Test, Parallelizable]
         [TestCase("any")]
         [TestCase("primary")]
         [TestCase("standby")]
@@ -290,7 +291,7 @@ namespace Npgsql.Tests
             }
         }
 
-        [Test]
+        [Test, Parallelizable]
         public void TargetSessionAttributes_default_is_null()
             => Assert.That(new NpgsqlConnectionStringBuilder().TargetSessionAttributes, Is.Null);
 
@@ -316,7 +317,7 @@ namespace Npgsql.Tests
             Assert.That(conn.Port, Is.EqualTo(standbyPostmaster.Port));
         }
 
-        [Test]
+        [Test, Parallelizable]
         public void TargetSessionAttributes_invalid_throws()
             => Assert.Throws<ArgumentException>(() =>
                 new NpgsqlConnectionStringBuilder
@@ -324,7 +325,7 @@ namespace Npgsql.Tests
                     TargetSessionAttributes = nameof(TargetSessionAttributes_invalid_throws)
                 });
 
-        [Test]
+        [Test, Parallelizable]
         public void HostRecheckSeconds_default_value()
         {
             var builder = new NpgsqlConnectionStringBuilder();
@@ -332,7 +333,7 @@ namespace Npgsql.Tests
             Assert.That(builder.HostRecheckSecondsTranslated, Is.EqualTo(TimeSpan.FromSeconds(10)));
         }
 
-        [Test]
+        [Test, Parallelizable]
         public void HostRecheckSeconds_zero_value()
         {
             var builder = new NpgsqlConnectionStringBuilder
@@ -343,7 +344,7 @@ namespace Npgsql.Tests
             Assert.That(builder.HostRecheckSecondsTranslated, Is.EqualTo(TimeSpan.FromSeconds(-1)));
         }
 
-        [Test]
+        [Test, Parallelizable]
         public void HostRecheckSeconds_invalid_throws()
             => Assert.Throws<ArgumentException>(() =>
                 new NpgsqlConnectionStringBuilder
@@ -351,7 +352,7 @@ namespace Npgsql.Tests
                     HostRecheckSeconds = -1
                 });
 
-        [Test]
+        [Test, Parallelizable]
         public async Task Connect_with_load_balancing()
         {
             await using var primaryPostmaster = PgPostmasterMock.Start(state: Primary);
@@ -395,7 +396,7 @@ namespace Npgsql.Tests
             }
         }
 
-        [Test]
+        [Test, Parallelizable]
         public async Task Connect_without_load_balancing()
         {
             await using var primaryPostmaster = PgPostmasterMock.Start(state: Primary);
@@ -434,7 +435,7 @@ namespace Npgsql.Tests
             }
         }
 
-        [Test]
+        [Test, Parallelizable]
         public async Task Connect_state_changing_hosts([Values] bool alwaysCheckHostState)
         {
             await using var primaryPostmaster = PgPostmasterMock.Start(state: Primary);
@@ -489,7 +490,7 @@ namespace Npgsql.Tests
             await secondServerTask;
         }
 
-        [Test]
+        [Test, Parallelizable]
         public void Cluster_state_cache_basic()
         {
             const string host = nameof(Cluster_state_cache_basic);
